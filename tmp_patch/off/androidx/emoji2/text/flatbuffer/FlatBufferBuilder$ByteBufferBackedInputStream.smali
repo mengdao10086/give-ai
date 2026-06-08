@@ -1,0 +1,72 @@
+.class Landroidx/emoji2/text/flatbuffer/FlatBufferBuilder$ByteBufferBackedInputStream;
+.super Ljava/io/InputStream;
+.source "FlatBufferBuilder.java"
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Landroidx/emoji2/text/flatbuffer/FlatBufferBuilder;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x8
+    name = "ByteBufferBackedInputStream"
+.end annotation
+
+
+# instance fields
+.field buf:Ljava/nio/ByteBuffer;
+
+
+# direct methods
+.method public constructor <init>(Ljava/nio/ByteBuffer;)V
+    .registers 2
+
+    #@0
+    .line 1041
+    invoke-direct {p0}, Ljava/io/InputStream;-><init>()V
+
+    #@3
+    .line 1042
+    iput-object p1, p0, Landroidx/emoji2/text/flatbuffer/FlatBufferBuilder$ByteBufferBackedInputStream;->buf:Ljava/nio/ByteBuffer;
+
+    #@5
+    return-void
+.end method
+
+
+# virtual methods
+.method public read()I
+    .registers 2
+    .annotation system Ldalvik/annotation/Throws;
+        value = {
+            Ljava/io/IOException;
+        }
+    .end annotation
+
+    #@0
+    .line 1047
+    :try_start_0
+    iget-object v0, p0, Landroidx/emoji2/text/flatbuffer/FlatBufferBuilder$ByteBufferBackedInputStream;->buf:Ljava/nio/ByteBuffer;
+
+    #@2
+    invoke-virtual {v0}, Ljava/nio/ByteBuffer;->get()B
+
+    #@5
+    move-result v0
+    :try_end_6
+    .catch Ljava/nio/BufferUnderflowException; {:try_start_0 .. :try_end_6} :catch_9
+
+    #@6
+    and-int/lit16 v0, v0, 0xff
+
+    #@8
+    return v0
+
+    #@9
+    :catch_9
+    const/4 v0, -0x1
+
+    #@a
+    return v0
+.end method

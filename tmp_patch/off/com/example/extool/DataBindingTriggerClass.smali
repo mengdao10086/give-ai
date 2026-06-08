@@ -1,0 +1,16 @@
+.class public Lcom/example/extool/DataBindingTriggerClass;
+.super Ljava/lang/Object;
+.source "DataBindingTriggerClass.java"
+
+
+# direct methods
+.method public constructor <init>()V
+    .registers 1
+
+    #@0
+    .line 4
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    #@3
+    return-void
+.end method

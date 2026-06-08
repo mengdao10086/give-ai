@@ -1,0 +1,7 @@
+id=AppOpt
+name=线程优化
+version=1.6.3
+versionCode=82
+author=Suto
+description=一个支持自定义规则的安卓应用线程CPU亲和性优化程序
+updateJson=https://gitee.com/sutoliu/AppOpt/raw/master/modules_update/AppOpt.json

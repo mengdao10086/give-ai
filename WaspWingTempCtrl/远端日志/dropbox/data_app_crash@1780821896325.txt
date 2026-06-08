@@ -1,0 +1,34 @@
+SystemUptimeMs: 27552
+Process: com.accessibilitymanager
+PID: 8518
+UID: 10269
+Frozen: false
+Flags: 0x3088be44
+Package: com.accessibilitymanager v8 (8)
+Foreground: No
+Process-Runtime: 312
+Timestamp: 2026-06-07 16:44:56.182+0800
+Build: Redmi/mondrian/mondrian:16/BP2A.250605.031.A3/OS3.0.313.0.WPCCNXM:user/release-keys
+Crash-Handler: com.android.internal.os.RuntimeInit$KillApplicationHandler
+Loading-Progress: 1.0
+Dropped-Count: 0
+
+java.lang.RuntimeException: Unable to start receiver com.accessibilitymanager.StartReceiver: java.lang.IllegalStateException: SharedPreferences in credential encrypted storage are not available until after user (id 0) is unlocked
+	at android.app.ActivityThread.handleReceiver(ActivityThread.java:5535)
+	at android.app.ActivityThread.-$$Nest$mhandleReceiver(Unknown Source:0)
+	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2857)
+	at android.os.Handler.dispatchMessage(Handler.java:114)
+	at android.os.Looper.loopOnce(Looper.java:274)
+	at android.os.Looper.loop(Looper.java:369)
+	at android.app.ActivityThread.main(ActivityThread.java:10090)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:616)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1137)
+Caused by: java.lang.IllegalStateException: SharedPreferences in credential encrypted storage are not available until after user (id 0) is unlocked
+	at android.app.ContextImpl.getSharedPreferences(ContextImpl.java:642)
+	at android.app.ContextImpl.getSharedPreferences(ContextImpl.java:620)
+	at android.content.ContextWrapper.getSharedPreferences(ContextWrapper.java:239)
+	at android.content.ContextWrapper.getSharedPreferences(ContextWrapper.java:239)
+	at com.accessibilitymanager.StartReceiver.onReceive(StartReceiver.java:19)
+	at android.app.ActivityThread.handleReceiver(ActivityThread.java:5519)
+	... 9 more

@@ -1,0 +1,56 @@
+.class Landroidx/constraintlayout/motion/utils/ViewOscillator$TranslationZset;
+.super Landroidx/constraintlayout/motion/utils/ViewOscillator;
+.source "ViewOscillator.java"
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Landroidx/constraintlayout/motion/utils/ViewOscillator;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x8
+    name = "TranslationZset"
+.end annotation
+
+
+# direct methods
+.method constructor <init>()V
+    .registers 1
+
+    #@0
+    .line 154
+    invoke-direct {p0}, Landroidx/constraintlayout/motion/utils/ViewOscillator;-><init>()V
+
+    #@3
+    return-void
+.end method
+
+
+# virtual methods
+.method public setProperty(Landroid/view/View;F)V
+    .registers 3
+    .annotation system Ldalvik/annotation/MethodParameters;
+        accessFlags = {
+            0x0,
+            0x0
+        }
+        names = {
+            "view",
+            "t"
+        }
+    .end annotation
+
+    #@0
+    .line 158
+    invoke-virtual {p0, p2}, Landroidx/constraintlayout/motion/utils/ViewOscillator$TranslationZset;->get(F)F
+
+    #@3
+    move-result p2
+
+    #@4
+    invoke-virtual {p1, p2}, Landroid/view/View;->setTranslationZ(F)V
+
+    #@7
+    return-void
+.end method

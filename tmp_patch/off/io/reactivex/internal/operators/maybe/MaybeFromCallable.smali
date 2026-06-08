@@ -1,0 +1,193 @@
+.class public final Lio/reactivex/internal/operators/maybe/MaybeFromCallable;
+.super Lio/reactivex/Maybe;
+.source "MaybeFromCallable.java"
+
+# interfaces
+.implements Ljava/util/concurrent/Callable;
+
+
+# annotations
+.annotation system Ldalvik/annotation/Signature;
+    value = {
+        "<T:",
+        "Ljava/lang/Object;",
+        ">",
+        "Lio/reactivex/Maybe<",
+        "TT;>;",
+        "Ljava/util/concurrent/Callable<",
+        "TT;>;"
+    }
+.end annotation
+
+
+# instance fields
+.field final callable:Ljava/util/concurrent/Callable;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Ljava/util/concurrent/Callable<",
+            "+TT;>;"
+        }
+    .end annotation
+.end field
+
+
+# direct methods
+.method public constructor <init>(Ljava/util/concurrent/Callable;)V
+    .registers 2
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Ljava/util/concurrent/Callable<",
+            "+TT;>;)V"
+        }
+    .end annotation
+
+    #@0
+    .line 32
+    invoke-direct {p0}, Lio/reactivex/Maybe;-><init>()V
+
+    #@3
+    .line 33
+    iput-object p1, p0, Lio/reactivex/internal/operators/maybe/MaybeFromCallable;->callable:Ljava/util/concurrent/Callable;
+
+    #@5
+    return-void
+.end method
+
+
+# virtual methods
+.method public call()Ljava/lang/Object;
+    .registers 2
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "()TT;"
+        }
+    .end annotation
+
+    .annotation system Ldalvik/annotation/Throws;
+        value = {
+            Ljava/lang/Exception;
+        }
+    .end annotation
+
+    #@0
+    .line 69
+    iget-object v0, p0, Lio/reactivex/internal/operators/maybe/MaybeFromCallable;->callable:Ljava/util/concurrent/Callable;
+
+    #@2
+    invoke-interface {v0}, Ljava/util/concurrent/Callable;->call()Ljava/lang/Object;
+
+    #@5
+    move-result-object v0
+
+    #@6
+    return-object v0
+.end method
+
+.method protected subscribeActual(Lio/reactivex/MaybeObserver;)V
+    .registers 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lio/reactivex/MaybeObserver<",
+            "-TT;>;)V"
+        }
+    .end annotation
+
+    #@0
+    .line 38
+    invoke-static {}, Lio/reactivex/disposables/Disposables;->empty()Lio/reactivex/disposables/Disposable;
+
+    #@3
+    move-result-object v0
+
+    #@4
+    .line 39
+    invoke-interface {p1, v0}, Lio/reactivex/MaybeObserver;->onSubscribe(Lio/reactivex/disposables/Disposable;)V
+
+    #@7
+    .line 41
+    invoke-interface {v0}, Lio/reactivex/disposables/Disposable;->isDisposed()Z
+
+    #@a
+    move-result v1
+
+    #@b
+    if-nez v1, :cond_34
+
+    #@d
+    .line 46
+    :try_start_d
+    iget-object v1, p0, Lio/reactivex/internal/operators/maybe/MaybeFromCallable;->callable:Ljava/util/concurrent/Callable;
+
+    #@f
+    invoke-interface {v1}, Ljava/util/concurrent/Callable;->call()Ljava/lang/Object;
+
+    #@12
+    move-result-object v1
+    :try_end_13
+    .catchall {:try_start_d .. :try_end_13} :catchall_23
+
+    #@13
+    .line 57
+    invoke-interface {v0}, Lio/reactivex/disposables/Disposable;->isDisposed()Z
+
+    #@16
+    move-result v0
+
+    #@17
+    if-nez v0, :cond_34
+
+    #@19
+    if-nez v1, :cond_1f
+
+    #@1b
+    .line 59
+    invoke-interface {p1}, Lio/reactivex/MaybeObserver;->onComplete()V
+
+    #@1e
+    goto :goto_34
+
+    #@1f
+    .line 61
+    :cond_1f
+    invoke-interface {p1, v1}, Lio/reactivex/MaybeObserver;->onSuccess(Ljava/lang/Object;)V
+
+    #@22
+    goto :goto_34
+
+    #@23
+    :catchall_23
+    move-exception v1
+
+    #@24
+    .line 48
+    invoke-static {v1}, Lio/reactivex/exceptions/Exceptions;->throwIfFatal(Ljava/lang/Throwable;)V
+
+    #@27
+    .line 49
+    invoke-interface {v0}, Lio/reactivex/disposables/Disposable;->isDisposed()Z
+
+    #@2a
+    move-result v0
+
+    #@2b
+    if-nez v0, :cond_31
+
+    #@2d
+    .line 50
+    invoke-interface {p1, v1}, Lio/reactivex/MaybeObserver;->onError(Ljava/lang/Throwable;)V
+
+    #@30
+    goto :goto_34
+
+    #@31
+    .line 52
+    :cond_31
+    invoke-static {v1}, Lio/reactivex/plugins/RxJavaPlugins;->onError(Ljava/lang/Throwable;)V
+
+    #@34
+    :cond_34
+    :goto_34
+    return-void
+.end method

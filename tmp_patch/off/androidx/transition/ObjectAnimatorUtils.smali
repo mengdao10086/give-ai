@@ -1,0 +1,47 @@
+.class Landroidx/transition/ObjectAnimatorUtils;
+.super Ljava/lang/Object;
+.source "ObjectAnimatorUtils.java"
+
+
+# direct methods
+.method private constructor <init>()V
+    .registers 1
+
+    #@0
+    .line 34
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    #@3
+    return-void
+.end method
+
+.method static ofPointF(Ljava/lang/Object;Landroid/util/Property;Landroid/graphics/Path;)Landroid/animation/ObjectAnimator;
+    .registers 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "<T:",
+            "Ljava/lang/Object;",
+            ">(TT;",
+            "Landroid/util/Property<",
+            "TT;",
+            "Landroid/graphics/PointF;",
+            ">;",
+            "Landroid/graphics/Path;",
+            ")",
+            "Landroid/animation/ObjectAnimator;"
+        }
+    .end annotation
+
+    #@0
+    const/4 v0, 0x0
+
+    #@1
+    .line 29
+    invoke-static {p0, p1, v0, p2}, Landroid/animation/ObjectAnimator;->ofObject(Ljava/lang/Object;Landroid/util/Property;Landroid/animation/TypeConverter;Landroid/graphics/Path;)Landroid/animation/ObjectAnimator;
+
+    #@4
+    move-result-object p0
+
+    #@5
+    return-object p0
+.end method

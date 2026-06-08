@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:label="飞智b6x增强"
+        android:icon="@android:drawable/ic_menu_compass"
+        android:allowBackup="false"
+        android:supportsRtl="true">
+
+        <!-- ========== Xposed / LSPosed 模块元数据 ========== -->
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposedminversion"
+            android:value="53" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="修复了b6x在安卓16无法使用的问题" />
+
+        <!-- 无 Activity — 纯模块，安装后 LSPosed 中勾选即可 -->
+
+    </application>
+
+</manifest>

@@ -1,0 +1,7 @@
+id=scene_swap_controller
+name=Scene的附加模块(二)
+version=4.2.4
+versionCode=4214
+author=嘟嘟Ski
+description=Scene的附加模块之二（ZRAM/SWAP控制器），在开机时根据配置调整各项参数，同时也能增强许多设备的后台留存能力
+updateJson=https://vtools.oss-cn-beijing.aliyuncs.com/addin/swap-controller.json

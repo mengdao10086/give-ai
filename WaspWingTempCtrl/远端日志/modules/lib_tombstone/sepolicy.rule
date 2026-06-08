@@ -1,0 +1,3 @@
+allow system_server apk_data_file file execute
+allow system_server * process {sigstop}
+allow system_server * process {sigtstp}

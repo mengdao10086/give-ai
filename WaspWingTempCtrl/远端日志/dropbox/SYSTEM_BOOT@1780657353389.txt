@@ -1,0 +1,8 @@
+isPrevious: true
+Build: Redmi/mondrian/mondrian:16/BP2A.250605.031.A3/OS3.0.313.0.WPCCNXM:user/release-keys
+Hardware: taro
+Revision: 0
+Bootloader: unknown
+Radio: null
+Kernel: Linux version 5.10.256-Jianke-Jiangnan (jk@jk) (Android (7284624, based on r416183b) clang version 12.0.5 (https://android.googlesource.com/toolchain/llvm-project c935d99d7cf2016289302412d708641d52d2f7ee), LLD 12.0.5 (/buildbot/src/android/llvm-toolchain/out/llvm-project/lld c935d99d7cf2016289302412d708641d52d2f7ee)) #1 SMP PREEMPT Sun May 31 23:27:41 WITA 2026
+

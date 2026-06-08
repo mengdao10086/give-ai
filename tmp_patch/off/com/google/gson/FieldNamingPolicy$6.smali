@@ -1,0 +1,64 @@
+.class final enum Lcom/google/gson/FieldNamingPolicy$6;
+.super Lcom/google/gson/FieldNamingPolicy;
+.source "FieldNamingPolicy.java"
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Lcom/google/gson/FieldNamingPolicy;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x4008
+    name = null
+.end annotation
+
+
+# direct methods
+.method constructor <init>(Ljava/lang/String;I)V
+    .registers 4
+
+    #@0
+    const/4 v0, 0x0
+
+    #@1
+    .line 136
+    invoke-direct {p0, p1, p2, v0}, Lcom/google/gson/FieldNamingPolicy;-><init>(Ljava/lang/String;ILcom/google/gson/FieldNamingPolicy$1;)V
+
+    #@4
+    return-void
+.end method
+
+
+# virtual methods
+.method public translateName(Ljava/lang/reflect/Field;)Ljava/lang/String;
+    .registers 3
+
+    #@0
+    .line 138
+    invoke-virtual {p1}, Ljava/lang/reflect/Field;->getName()Ljava/lang/String;
+
+    #@3
+    move-result-object p1
+
+    #@4
+    const-string v0, "."
+
+    #@6
+    invoke-static {p1, v0}, Lcom/google/gson/FieldNamingPolicy$6;->separateCamelCase(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+
+    #@9
+    move-result-object p1
+
+    #@a
+    sget-object v0, Ljava/util/Locale;->ENGLISH:Ljava/util/Locale;
+
+    #@c
+    invoke-virtual {p1, v0}, Ljava/lang/String;->toLowerCase(Ljava/util/Locale;)Ljava/lang/String;
+
+    #@f
+    move-result-object p1
+
+    #@10
+    return-object p1
+.end method

@@ -1,0 +1,64 @@
+.class Lcom/google/android/material/button/MaterialButtonToggleGroup$PressedStateTracker;
+.super Ljava/lang/Object;
+.source "MaterialButtonToggleGroup.java"
+
+# interfaces
+.implements Lcom/google/android/material/button/MaterialButton$OnPressedChangeListener;
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Lcom/google/android/material/button/MaterialButtonToggleGroup;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x2
+    name = "PressedStateTracker"
+.end annotation
+
+
+# instance fields
+.field final synthetic this$0:Lcom/google/android/material/button/MaterialButtonToggleGroup;
+
+
+# direct methods
+.method private constructor <init>(Lcom/google/android/material/button/MaterialButtonToggleGroup;)V
+    .registers 2
+
+    #@0
+    .line 791
+    iput-object p1, p0, Lcom/google/android/material/button/MaterialButtonToggleGroup$PressedStateTracker;->this$0:Lcom/google/android/material/button/MaterialButtonToggleGroup;
+
+    #@2
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    #@5
+    return-void
+.end method
+
+.method synthetic constructor <init>(Lcom/google/android/material/button/MaterialButtonToggleGroup;Lcom/google/android/material/button/MaterialButtonToggleGroup$1;)V
+    .registers 3
+
+    #@0
+    .line 791
+    invoke-direct {p0, p1}, Lcom/google/android/material/button/MaterialButtonToggleGroup$PressedStateTracker;-><init>(Lcom/google/android/material/button/MaterialButtonToggleGroup;)V
+
+    #@3
+    return-void
+.end method
+
+
+# virtual methods
+.method public onPressedChanged(Lcom/google/android/material/button/MaterialButton;Z)V
+    .registers 3
+
+    #@0
+    .line 795
+    iget-object p1, p0, Lcom/google/android/material/button/MaterialButtonToggleGroup$PressedStateTracker;->this$0:Lcom/google/android/material/button/MaterialButtonToggleGroup;
+
+    #@2
+    invoke-virtual {p1}, Lcom/google/android/material/button/MaterialButtonToggleGroup;->invalidate()V
+
+    #@5
+    return-void
+.end method

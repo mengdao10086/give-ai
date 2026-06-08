@@ -1,0 +1,69 @@
+.class Landroidx/core/app/NavUtils$Api16Impl;
+.super Ljava/lang/Object;
+.source "NavUtils.java"
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Landroidx/core/app/NavUtils;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x8
+    name = "Api16Impl"
+.end annotation
+
+
+# direct methods
+.method private constructor <init>()V
+    .registers 1
+
+    #@0
+    .line 289
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    #@3
+    return-void
+.end method
+
+.method static getParentActivityIntent(Landroid/app/Activity;)Landroid/content/Intent;
+    .registers 1
+
+    #@0
+    .line 305
+    invoke-virtual {p0}, Landroid/app/Activity;->getParentActivityIntent()Landroid/content/Intent;
+
+    #@3
+    move-result-object p0
+
+    #@4
+    return-object p0
+.end method
+
+.method static navigateUpTo(Landroid/app/Activity;Landroid/content/Intent;)Z
+    .registers 2
+
+    #@0
+    .line 300
+    invoke-virtual {p0, p1}, Landroid/app/Activity;->navigateUpTo(Landroid/content/Intent;)Z
+
+    #@3
+    move-result p0
+
+    #@4
+    return p0
+.end method
+
+.method static shouldUpRecreateTask(Landroid/app/Activity;Landroid/content/Intent;)Z
+    .registers 2
+
+    #@0
+    .line 295
+    invoke-virtual {p0, p1}, Landroid/app/Activity;->shouldUpRecreateTask(Landroid/content/Intent;)Z
+
+    #@3
+    move-result p0
+
+    #@4
+    return p0
+.end method

@@ -1,0 +1,40 @@
+.class public final synthetic Landroidx/constraintlayout/helper/widget/Carousel$$ExternalSyntheticLambda0;
+.super Ljava/lang/Object;
+.source "D8$$SyntheticClass"
+
+# interfaces
+.implements Ljava/lang/Runnable;
+
+
+# instance fields
+.field public final synthetic f$0:Landroidx/constraintlayout/helper/widget/Carousel;
+
+
+# direct methods
+.method public synthetic constructor <init>(Landroidx/constraintlayout/helper/widget/Carousel;)V
+    .registers 2
+
+    #@0
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    #@3
+    iput-object p1, p0, Landroidx/constraintlayout/helper/widget/Carousel$$ExternalSyntheticLambda0;->f$0:Landroidx/constraintlayout/helper/widget/Carousel;
+
+    #@5
+    return-void
+.end method
+
+
+# virtual methods
+.method public final run()V
+    .registers 2
+
+    #@0
+    iget-object v0, p0, Landroidx/constraintlayout/helper/widget/Carousel$$ExternalSyntheticLambda0;->f$0:Landroidx/constraintlayout/helper/widget/Carousel;
+
+    #@2
+    invoke-virtual {v0}, Landroidx/constraintlayout/helper/widget/Carousel;->lambda$updateItems$0$androidx-constraintlayout-helper-widget-Carousel()V
+
+    #@5
+    return-void
+.end method

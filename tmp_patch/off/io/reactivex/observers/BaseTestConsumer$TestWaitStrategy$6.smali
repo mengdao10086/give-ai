@@ -1,0 +1,46 @@
+.class final enum Lio/reactivex/observers/BaseTestConsumer$TestWaitStrategy$6;
+.super Lio/reactivex/observers/BaseTestConsumer$TestWaitStrategy;
+.source "BaseTestConsumer.java"
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Lio/reactivex/observers/BaseTestConsumer$TestWaitStrategy;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x4008
+    name = null
+.end annotation
+
+
+# direct methods
+.method constructor <init>(Ljava/lang/String;I)V
+    .registers 4
+
+    #@0
+    const/4 v0, 0x0
+
+    #@1
+    .line 938
+    invoke-direct {p0, p1, p2, v0}, Lio/reactivex/observers/BaseTestConsumer$TestWaitStrategy;-><init>(Ljava/lang/String;ILio/reactivex/observers/BaseTestConsumer$1;)V
+
+    #@4
+    return-void
+.end method
+
+
+# virtual methods
+.method public run()V
+    .registers 2
+
+    #@0
+    const/16 v0, 0x3e8
+
+    #@2
+    .line 941
+    invoke-static {v0}, Lio/reactivex/observers/BaseTestConsumer$TestWaitStrategy$6;->sleep(I)V
+
+    #@5
+    return-void
+.end method

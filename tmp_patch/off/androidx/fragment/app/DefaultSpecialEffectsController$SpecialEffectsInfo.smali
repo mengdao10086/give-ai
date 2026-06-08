@@ -1,0 +1,152 @@
+.class Landroidx/fragment/app/DefaultSpecialEffectsController$SpecialEffectsInfo;
+.super Ljava/lang/Object;
+.source "DefaultSpecialEffectsController.java"
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Landroidx/fragment/app/DefaultSpecialEffectsController;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0xa
+    name = "SpecialEffectsInfo"
+.end annotation
+
+
+# instance fields
+.field private final mOperation:Landroidx/fragment/app/SpecialEffectsController$Operation;
+
+.field private final mSignal:Landroidx/core/os/CancellationSignal;
+
+
+# direct methods
+.method constructor <init>(Landroidx/fragment/app/SpecialEffectsController$Operation;Landroidx/core/os/CancellationSignal;)V
+    .registers 3
+
+    #@0
+    .line 853
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    #@3
+    .line 854
+    iput-object p1, p0, Landroidx/fragment/app/DefaultSpecialEffectsController$SpecialEffectsInfo;->mOperation:Landroidx/fragment/app/SpecialEffectsController$Operation;
+
+    #@5
+    .line 855
+    iput-object p2, p0, Landroidx/fragment/app/DefaultSpecialEffectsController$SpecialEffectsInfo;->mSignal:Landroidx/core/os/CancellationSignal;
+
+    #@7
+    return-void
+.end method
+
+
+# virtual methods
+.method completeSpecialEffect()V
+    .registers 3
+
+    #@0
+    .line 877
+    iget-object v0, p0, Landroidx/fragment/app/DefaultSpecialEffectsController$SpecialEffectsInfo;->mOperation:Landroidx/fragment/app/SpecialEffectsController$Operation;
+
+    #@2
+    iget-object v1, p0, Landroidx/fragment/app/DefaultSpecialEffectsController$SpecialEffectsInfo;->mSignal:Landroidx/core/os/CancellationSignal;
+
+    #@4
+    invoke-virtual {v0, v1}, Landroidx/fragment/app/SpecialEffectsController$Operation;->completeSpecialEffect(Landroidx/core/os/CancellationSignal;)V
+
+    #@7
+    return-void
+.end method
+
+.method getOperation()Landroidx/fragment/app/SpecialEffectsController$Operation;
+    .registers 2
+
+    #@0
+    .line 860
+    iget-object v0, p0, Landroidx/fragment/app/DefaultSpecialEffectsController$SpecialEffectsInfo;->mOperation:Landroidx/fragment/app/SpecialEffectsController$Operation;
+
+    #@2
+    return-object v0
+.end method
+
+.method getSignal()Landroidx/core/os/CancellationSignal;
+    .registers 2
+
+    #@0
+    .line 865
+    iget-object v0, p0, Landroidx/fragment/app/DefaultSpecialEffectsController$SpecialEffectsInfo;->mSignal:Landroidx/core/os/CancellationSignal;
+
+    #@2
+    return-object v0
+.end method
+
+.method isVisibilityUnchanged()Z
+    .registers 4
+
+    #@0
+    .line 869
+    iget-object v0, p0, Landroidx/fragment/app/DefaultSpecialEffectsController$SpecialEffectsInfo;->mOperation:Landroidx/fragment/app/SpecialEffectsController$Operation;
+
+    #@2
+    .line 870
+    invoke-virtual {v0}, Landroidx/fragment/app/SpecialEffectsController$Operation;->getFragment()Landroidx/fragment/app/Fragment;
+
+    #@5
+    move-result-object v0
+
+    #@6
+    iget-object v0, v0, Landroidx/fragment/app/Fragment;->mView:Landroid/view/View;
+
+    #@8
+    .line 869
+    invoke-static {v0}, Landroidx/fragment/app/SpecialEffectsController$Operation$State;->from(Landroid/view/View;)Landroidx/fragment/app/SpecialEffectsController$Operation$State;
+
+    #@b
+    move-result-object v0
+
+    #@c
+    .line 871
+    iget-object v1, p0, Landroidx/fragment/app/DefaultSpecialEffectsController$SpecialEffectsInfo;->mOperation:Landroidx/fragment/app/SpecialEffectsController$Operation;
+
+    #@e
+    invoke-virtual {v1}, Landroidx/fragment/app/SpecialEffectsController$Operation;->getFinalState()Landroidx/fragment/app/SpecialEffectsController$Operation$State;
+
+    #@11
+    move-result-object v1
+
+    #@12
+    if-eq v0, v1, :cond_1f
+
+    #@14
+    .line 872
+    sget-object v2, Landroidx/fragment/app/SpecialEffectsController$Operation$State;->VISIBLE:Landroidx/fragment/app/SpecialEffectsController$Operation$State;
+
+    #@16
+    if-eq v0, v2, :cond_1d
+
+    #@18
+    sget-object v0, Landroidx/fragment/app/SpecialEffectsController$Operation$State;->VISIBLE:Landroidx/fragment/app/SpecialEffectsController$Operation$State;
+
+    #@1a
+    if-eq v1, v0, :cond_1d
+
+    #@1c
+    goto :goto_1f
+
+    #@1d
+    :cond_1d
+    const/4 v0, 0x0
+
+    #@1e
+    goto :goto_20
+
+    #@1f
+    :cond_1f
+    :goto_1f
+    const/4 v0, 0x1
+
+    #@20
+    :goto_20
+    return v0
+.end method

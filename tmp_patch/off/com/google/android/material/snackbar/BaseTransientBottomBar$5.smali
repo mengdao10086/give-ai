@@ -1,0 +1,102 @@
+.class Lcom/google/android/material/snackbar/BaseTransientBottomBar$5;
+.super Ljava/lang/Object;
+.source "BaseTransientBottomBar.java"
+
+# interfaces
+.implements Lcom/google/android/material/snackbar/SnackbarManager$Callback;
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingClass;
+    value = Lcom/google/android/material/snackbar/BaseTransientBottomBar;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x0
+    name = null
+.end annotation
+
+
+# instance fields
+.field final synthetic this$0:Lcom/google/android/material/snackbar/BaseTransientBottomBar;
+
+
+# direct methods
+.method constructor <init>(Lcom/google/android/material/snackbar/BaseTransientBottomBar;)V
+    .registers 2
+
+    #@0
+    .line 731
+    iput-object p1, p0, Lcom/google/android/material/snackbar/BaseTransientBottomBar$5;->this$0:Lcom/google/android/material/snackbar/BaseTransientBottomBar;
+
+    #@2
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    #@5
+    return-void
+.end method
+
+
+# virtual methods
+.method public dismiss(I)V
+    .registers 7
+
+    #@0
+    .line 739
+    sget-object v0, Lcom/google/android/material/snackbar/BaseTransientBottomBar;->handler:Landroid/os/Handler;
+
+    #@2
+    sget-object v1, Lcom/google/android/material/snackbar/BaseTransientBottomBar;->handler:Landroid/os/Handler;
+
+    #@4
+    const/4 v2, 0x0
+
+    #@5
+    iget-object v3, p0, Lcom/google/android/material/snackbar/BaseTransientBottomBar$5;->this$0:Lcom/google/android/material/snackbar/BaseTransientBottomBar;
+
+    #@7
+    const/4 v4, 0x1
+
+    #@8
+    .line 740
+    invoke-virtual {v1, v4, p1, v2, v3}, Landroid/os/Handler;->obtainMessage(IIILjava/lang/Object;)Landroid/os/Message;
+
+    #@b
+    move-result-object p1
+
+    #@c
+    .line 739
+    invoke-virtual {v0, p1}, Landroid/os/Handler;->sendMessage(Landroid/os/Message;)Z
+
+    #@f
+    return-void
+.end method
+
+.method public show()V
+    .registers 5
+
+    #@0
+    .line 734
+    sget-object v0, Lcom/google/android/material/snackbar/BaseTransientBottomBar;->handler:Landroid/os/Handler;
+
+    #@2
+    sget-object v1, Lcom/google/android/material/snackbar/BaseTransientBottomBar;->handler:Landroid/os/Handler;
+
+    #@4
+    const/4 v2, 0x0
+
+    #@5
+    iget-object v3, p0, Lcom/google/android/material/snackbar/BaseTransientBottomBar$5;->this$0:Lcom/google/android/material/snackbar/BaseTransientBottomBar;
+
+    #@7
+    invoke-virtual {v1, v2, v3}, Landroid/os/Handler;->obtainMessage(ILjava/lang/Object;)Landroid/os/Message;
+
+    #@a
+    move-result-object v1
+
+    #@b
+    invoke-virtual {v0, v1}, Landroid/os/Handler;->sendMessage(Landroid/os/Message;)Z
+
+    #@e
+    return-void
+.end method

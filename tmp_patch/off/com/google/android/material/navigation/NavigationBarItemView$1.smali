@@ -1,0 +1,82 @@
+.class Lcom/google/android/material/navigation/NavigationBarItemView$1;
+.super Ljava/lang/Object;
+.source "NavigationBarItemView.java"
+
+# interfaces
+.implements Landroid/view/View$OnLayoutChangeListener;
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingMethod;
+    value = Lcom/google/android/material/navigation/NavigationBarItemView;-><init>(Landroid/content/Context;)V
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x0
+    name = null
+.end annotation
+
+
+# instance fields
+.field final synthetic this$0:Lcom/google/android/material/navigation/NavigationBarItemView;
+
+
+# direct methods
+.method constructor <init>(Lcom/google/android/material/navigation/NavigationBarItemView;)V
+    .registers 2
+
+    #@0
+    .line 159
+    iput-object p1, p0, Lcom/google/android/material/navigation/NavigationBarItemView$1;->this$0:Lcom/google/android/material/navigation/NavigationBarItemView;
+
+    #@2
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    #@5
+    return-void
+.end method
+
+
+# virtual methods
+.method public onLayoutChange(Landroid/view/View;IIIIIIII)V
+    .registers 10
+
+    #@0
+    .line 171
+    iget-object p1, p0, Lcom/google/android/material/navigation/NavigationBarItemView$1;->this$0:Lcom/google/android/material/navigation/NavigationBarItemView;
+
+    #@2
+    # getter for: Lcom/google/android/material/navigation/NavigationBarItemView;->icon:Landroid/widget/ImageView;
+    invoke-static {p1}, Lcom/google/android/material/navigation/NavigationBarItemView;->access$200(Lcom/google/android/material/navigation/NavigationBarItemView;)Landroid/widget/ImageView;
+
+    #@5
+    move-result-object p1
+
+    #@6
+    invoke-virtual {p1}, Landroid/widget/ImageView;->getVisibility()I
+
+    #@9
+    move-result p1
+
+    #@a
+    if-nez p1, :cond_15
+
+    #@c
+    .line 172
+    iget-object p1, p0, Lcom/google/android/material/navigation/NavigationBarItemView$1;->this$0:Lcom/google/android/material/navigation/NavigationBarItemView;
+
+    #@e
+    # getter for: Lcom/google/android/material/navigation/NavigationBarItemView;->icon:Landroid/widget/ImageView;
+    invoke-static {p1}, Lcom/google/android/material/navigation/NavigationBarItemView;->access$200(Lcom/google/android/material/navigation/NavigationBarItemView;)Landroid/widget/ImageView;
+
+    #@11
+    move-result-object p2
+
+    #@12
+    # invokes: Lcom/google/android/material/navigation/NavigationBarItemView;->tryUpdateBadgeBounds(Landroid/view/View;)V
+    invoke-static {p1, p2}, Lcom/google/android/material/navigation/NavigationBarItemView;->access$300(Lcom/google/android/material/navigation/NavigationBarItemView;Landroid/view/View;)V
+
+    #@15
+    :cond_15
+    return-void
+.end method

@@ -1,0 +1,86 @@
+.class Lcom/blankj/utilcode/util/NetworkUtils$3;
+.super Lcom/blankj/utilcode/util/Utils$Task;
+.source "NetworkUtils.java"
+
+
+# annotations
+.annotation system Ldalvik/annotation/EnclosingMethod;
+    value = Lcom/blankj/utilcode/util/NetworkUtils;->isAvailableByDnsAsync(Ljava/lang/String;Lcom/blankj/utilcode/util/Utils$Consumer;)Lcom/blankj/utilcode/util/Utils$Task;
+.end annotation
+
+.annotation system Ldalvik/annotation/InnerClass;
+    accessFlags = 0x0
+    name = null
+.end annotation
+
+.annotation system Ldalvik/annotation/Signature;
+    value = {
+        "Lcom/blankj/utilcode/util/Utils$Task<",
+        "Ljava/lang/Boolean;",
+        ">;"
+    }
+.end annotation
+
+
+# instance fields
+.field final synthetic val$domain:Ljava/lang/String;
+
+
+# direct methods
+.method constructor <init>(Lcom/blankj/utilcode/util/Utils$Consumer;Ljava/lang/String;)V
+    .registers 3
+
+    #@0
+    .line 202
+    iput-object p2, p0, Lcom/blankj/utilcode/util/NetworkUtils$3;->val$domain:Ljava/lang/String;
+
+    #@2
+    invoke-direct {p0, p1}, Lcom/blankj/utilcode/util/Utils$Task;-><init>(Lcom/blankj/utilcode/util/Utils$Consumer;)V
+
+    #@5
+    return-void
+.end method
+
+
+# virtual methods
+.method public doInBackground()Ljava/lang/Boolean;
+    .registers 2
+
+    #@0
+    .line 206
+    iget-object v0, p0, Lcom/blankj/utilcode/util/NetworkUtils$3;->val$domain:Ljava/lang/String;
+
+    #@2
+    invoke-static {v0}, Lcom/blankj/utilcode/util/NetworkUtils;->isAvailableByDns(Ljava/lang/String;)Z
+
+    #@5
+    move-result v0
+
+    #@6
+    invoke-static {v0}, Ljava/lang/Boolean;->valueOf(Z)Ljava/lang/Boolean;
+
+    #@9
+    move-result-object v0
+
+    #@a
+    return-object v0
+.end method
+
+.method public bridge synthetic doInBackground()Ljava/lang/Object;
+    .registers 2
+    .annotation system Ldalvik/annotation/Throws;
+        value = {
+            Ljava/lang/Throwable;
+        }
+    .end annotation
+
+    #@0
+    .line 202
+    invoke-virtual {p0}, Lcom/blankj/utilcode/util/NetworkUtils$3;->doInBackground()Ljava/lang/Boolean;
+
+    #@3
+    move-result-object v0
+
+    #@4
+    return-object v0
+.end method

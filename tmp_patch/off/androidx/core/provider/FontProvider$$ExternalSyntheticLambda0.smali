@@ -1,0 +1,39 @@
+.class public final synthetic Landroidx/core/provider/FontProvider$$ExternalSyntheticLambda0;
+.super Ljava/lang/Object;
+.source "D8$$SyntheticClass"
+
+# interfaces
+.implements Ljava/util/Comparator;
+
+
+# direct methods
+.method public synthetic constructor <init>()V
+    .registers 1
+
+    #@0
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    #@3
+    return-void
+.end method
+
+
+# virtual methods
+.method public final compare(Ljava/lang/Object;Ljava/lang/Object;)I
+    .registers 3
+
+    #@0
+    check-cast p1, [B
+
+    #@2
+    check-cast p2, [B
+
+    #@4
+    invoke-static {p1, p2}, Landroidx/core/provider/FontProvider;->lambda$static$0([B[B)I
+
+    #@7
+    move-result p1
+
+    #@8
+    return p1
+.end method

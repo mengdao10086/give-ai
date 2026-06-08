@@ -1,0 +1,104 @@
+.class public final Lio/reactivex/internal/operators/maybe/MaybeTakeUntilPublisher;
+.super Lio/reactivex/internal/operators/maybe/AbstractMaybeWithUpstream;
+.source "MaybeTakeUntilPublisher.java"
+
+
+# annotations
+.annotation system Ldalvik/annotation/MemberClasses;
+    value = {
+        Lio/reactivex/internal/operators/maybe/MaybeTakeUntilPublisher$TakeUntilMainMaybeObserver;
+    }
+.end annotation
+
+.annotation system Ldalvik/annotation/Signature;
+    value = {
+        "<T:",
+        "Ljava/lang/Object;",
+        "U:",
+        "Ljava/lang/Object;",
+        ">",
+        "Lio/reactivex/internal/operators/maybe/AbstractMaybeWithUpstream<",
+        "TT;TT;>;"
+    }
+.end annotation
+
+
+# instance fields
+.field final other:Lorg/reactivestreams/Publisher;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Lorg/reactivestreams/Publisher<",
+            "TU;>;"
+        }
+    .end annotation
+.end field
+
+
+# direct methods
+.method public constructor <init>(Lio/reactivex/MaybeSource;Lorg/reactivestreams/Publisher;)V
+    .registers 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lio/reactivex/MaybeSource<",
+            "TT;>;",
+            "Lorg/reactivestreams/Publisher<",
+            "TU;>;)V"
+        }
+    .end annotation
+
+    #@0
+    .line 38
+    invoke-direct {p0, p1}, Lio/reactivex/internal/operators/maybe/AbstractMaybeWithUpstream;-><init>(Lio/reactivex/MaybeSource;)V
+
+    #@3
+    .line 39
+    iput-object p2, p0, Lio/reactivex/internal/operators/maybe/MaybeTakeUntilPublisher;->other:Lorg/reactivestreams/Publisher;
+
+    #@5
+    return-void
+.end method
+
+
+# virtual methods
+.method protected subscribeActual(Lio/reactivex/MaybeObserver;)V
+    .registers 4
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lio/reactivex/MaybeObserver<",
+            "-TT;>;)V"
+        }
+    .end annotation
+
+    #@0
+    .line 44
+    new-instance v0, Lio/reactivex/internal/operators/maybe/MaybeTakeUntilPublisher$TakeUntilMainMaybeObserver;
+
+    #@2
+    invoke-direct {v0, p1}, Lio/reactivex/internal/operators/maybe/MaybeTakeUntilPublisher$TakeUntilMainMaybeObserver;-><init>(Lio/reactivex/MaybeObserver;)V
+
+    #@5
+    .line 45
+    invoke-interface {p1, v0}, Lio/reactivex/MaybeObserver;->onSubscribe(Lio/reactivex/disposables/Disposable;)V
+
+    #@8
+    .line 47
+    iget-object p1, p0, Lio/reactivex/internal/operators/maybe/MaybeTakeUntilPublisher;->other:Lorg/reactivestreams/Publisher;
+
+    #@a
+    iget-object v1, v0, Lio/reactivex/internal/operators/maybe/MaybeTakeUntilPublisher$TakeUntilMainMaybeObserver;->other:Lio/reactivex/internal/operators/maybe/MaybeTakeUntilPublisher$TakeUntilMainMaybeObserver$TakeUntilOtherMaybeObserver;
+
+    #@c
+    invoke-interface {p1, v1}, Lorg/reactivestreams/Publisher;->subscribe(Lorg/reactivestreams/Subscriber;)V
+
+    #@f
+    .line 49
+    iget-object p1, p0, Lio/reactivex/internal/operators/maybe/MaybeTakeUntilPublisher;->source:Lio/reactivex/MaybeSource;
+
+    #@11
+    invoke-interface {p1, v0}, Lio/reactivex/MaybeSource;->subscribe(Lio/reactivex/MaybeObserver;)V
+
+    #@14
+    return-void
+.end method

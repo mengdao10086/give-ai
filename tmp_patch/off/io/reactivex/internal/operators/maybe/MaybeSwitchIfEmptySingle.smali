@@ -1,0 +1,126 @@
+.class public final Lio/reactivex/internal/operators/maybe/MaybeSwitchIfEmptySingle;
+.super Lio/reactivex/Single;
+.source "MaybeSwitchIfEmptySingle.java"
+
+# interfaces
+.implements Lio/reactivex/internal/fuseable/HasUpstreamMaybeSource;
+
+
+# annotations
+.annotation system Ldalvik/annotation/MemberClasses;
+    value = {
+        Lio/reactivex/internal/operators/maybe/MaybeSwitchIfEmptySingle$SwitchIfEmptyMaybeObserver;
+    }
+.end annotation
+
+.annotation system Ldalvik/annotation/Signature;
+    value = {
+        "<T:",
+        "Ljava/lang/Object;",
+        ">",
+        "Lio/reactivex/Single<",
+        "TT;>;",
+        "Lio/reactivex/internal/fuseable/HasUpstreamMaybeSource<",
+        "TT;>;"
+    }
+.end annotation
+
+
+# instance fields
+.field final other:Lio/reactivex/SingleSource;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Lio/reactivex/SingleSource<",
+            "+TT;>;"
+        }
+    .end annotation
+.end field
+
+.field final source:Lio/reactivex/MaybeSource;
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "Lio/reactivex/MaybeSource<",
+            "TT;>;"
+        }
+    .end annotation
+.end field
+
+
+# direct methods
+.method public constructor <init>(Lio/reactivex/MaybeSource;Lio/reactivex/SingleSource;)V
+    .registers 3
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lio/reactivex/MaybeSource<",
+            "TT;>;",
+            "Lio/reactivex/SingleSource<",
+            "+TT;>;)V"
+        }
+    .end annotation
+
+    #@0
+    .line 33
+    invoke-direct {p0}, Lio/reactivex/Single;-><init>()V
+
+    #@3
+    .line 34
+    iput-object p1, p0, Lio/reactivex/internal/operators/maybe/MaybeSwitchIfEmptySingle;->source:Lio/reactivex/MaybeSource;
+
+    #@5
+    .line 35
+    iput-object p2, p0, Lio/reactivex/internal/operators/maybe/MaybeSwitchIfEmptySingle;->other:Lio/reactivex/SingleSource;
+
+    #@7
+    return-void
+.end method
+
+
+# virtual methods
+.method public source()Lio/reactivex/MaybeSource;
+    .registers 2
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "()",
+            "Lio/reactivex/MaybeSource<",
+            "TT;>;"
+        }
+    .end annotation
+
+    #@0
+    .line 40
+    iget-object v0, p0, Lio/reactivex/internal/operators/maybe/MaybeSwitchIfEmptySingle;->source:Lio/reactivex/MaybeSource;
+
+    #@2
+    return-object v0
+.end method
+
+.method protected subscribeActual(Lio/reactivex/SingleObserver;)V
+    .registers 5
+    .annotation system Ldalvik/annotation/Signature;
+        value = {
+            "(",
+            "Lio/reactivex/SingleObserver<",
+            "-TT;>;)V"
+        }
+    .end annotation
+
+    #@0
+    .line 45
+    iget-object v0, p0, Lio/reactivex/internal/operators/maybe/MaybeSwitchIfEmptySingle;->source:Lio/reactivex/MaybeSource;
+
+    #@2
+    new-instance v1, Lio/reactivex/internal/operators/maybe/MaybeSwitchIfEmptySingle$SwitchIfEmptyMaybeObserver;
+
+    #@4
+    iget-object v2, p0, Lio/reactivex/internal/operators/maybe/MaybeSwitchIfEmptySingle;->other:Lio/reactivex/SingleSource;
+
+    #@6
+    invoke-direct {v1, p1, v2}, Lio/reactivex/internal/operators/maybe/MaybeSwitchIfEmptySingle$SwitchIfEmptyMaybeObserver;-><init>(Lio/reactivex/SingleObserver;Lio/reactivex/SingleSource;)V
+
+    #@9
+    invoke-interface {v0, v1}, Lio/reactivex/MaybeSource;->subscribe(Lio/reactivex/MaybeObserver;)V
+
+    #@c
+    return-void
+.end method

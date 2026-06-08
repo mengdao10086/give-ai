@@ -1,0 +1,97 @@
+.class public Landroidx/databinding/adapters/SearchViewBindingAdapter;
+.super Ljava/lang/Object;
+.source "SearchViewBindingAdapter.java"
+
+
+# annotations
+.annotation system Ldalvik/annotation/MemberClasses;
+    value = {
+        Landroidx/databinding/adapters/SearchViewBindingAdapter$OnSuggestionClick;,
+        Landroidx/databinding/adapters/SearchViewBindingAdapter$OnSuggestionSelect;,
+        Landroidx/databinding/adapters/SearchViewBindingAdapter$OnQueryTextChange;,
+        Landroidx/databinding/adapters/SearchViewBindingAdapter$OnQueryTextSubmit;
+    }
+.end annotation
+
+
+# direct methods
+.method public constructor <init>()V
+    .registers 1
+
+    #@0
+    .line 38
+    invoke-direct {p0}, Ljava/lang/Object;-><init>()V
+
+    #@3
+    return-void
+.end method
+
+.method public static setOnQueryTextListener(Landroid/widget/SearchView;Landroidx/databinding/adapters/SearchViewBindingAdapter$OnQueryTextSubmit;Landroidx/databinding/adapters/SearchViewBindingAdapter$OnQueryTextChange;)V
+    .registers 4
+
+    #@0
+    if-nez p1, :cond_9
+
+    #@2
+    if-nez p2, :cond_9
+
+    #@4
+    const/4 p1, 0x0
+
+    #@5
+    .line 45
+    invoke-virtual {p0, p1}, Landroid/widget/SearchView;->setOnQueryTextListener(Landroid/widget/SearchView$OnQueryTextListener;)V
+
+    #@8
+    goto :goto_11
+
+    #@9
+    .line 47
+    :cond_9
+    new-instance v0, Landroidx/databinding/adapters/SearchViewBindingAdapter$1;
+
+    #@b
+    invoke-direct {v0, p1, p2}, Landroidx/databinding/adapters/SearchViewBindingAdapter$1;-><init>(Landroidx/databinding/adapters/SearchViewBindingAdapter$OnQueryTextSubmit;Landroidx/databinding/adapters/SearchViewBindingAdapter$OnQueryTextChange;)V
+
+    #@e
+    invoke-virtual {p0, v0}, Landroid/widget/SearchView;->setOnQueryTextListener(Landroid/widget/SearchView$OnQueryTextListener;)V
+
+    #@11
+    :goto_11
+    return-void
+.end method
+
+.method public static setOnSuggestListener(Landroid/widget/SearchView;Landroidx/databinding/adapters/SearchViewBindingAdapter$OnSuggestionSelect;Landroidx/databinding/adapters/SearchViewBindingAdapter$OnSuggestionClick;)V
+    .registers 4
+
+    #@0
+    if-nez p1, :cond_9
+
+    #@2
+    if-nez p2, :cond_9
+
+    #@4
+    const/4 p1, 0x0
+
+    #@5
+    .line 76
+    invoke-virtual {p0, p1}, Landroid/widget/SearchView;->setOnSuggestionListener(Landroid/widget/SearchView$OnSuggestionListener;)V
+
+    #@8
+    goto :goto_11
+
+    #@9
+    .line 78
+    :cond_9
+    new-instance v0, Landroidx/databinding/adapters/SearchViewBindingAdapter$2;
+
+    #@b
+    invoke-direct {v0, p1, p2}, Landroidx/databinding/adapters/SearchViewBindingAdapter$2;-><init>(Landroidx/databinding/adapters/SearchViewBindingAdapter$OnSuggestionSelect;Landroidx/databinding/adapters/SearchViewBindingAdapter$OnSuggestionClick;)V
+
+    #@e
+    invoke-virtual {p0, v0}, Landroid/widget/SearchView;->setOnSuggestionListener(Landroid/widget/SearchView$OnSuggestionListener;)V
+
+    #@11
+    :goto_11
+    return-void
+.end method

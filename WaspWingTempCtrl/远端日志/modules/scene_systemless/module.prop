@@ -1,0 +1,7 @@
+id=scene_systemless
+name=Scene的附加模块
+version=v1.4.0
+versionCode=140
+author=嘟嘟ski
+description=Scene的辅助模块，使用Scene部分功能时免于直接操作系统文件  < 集成 Pandora_system.prop(部分)，kill_scene-daemon.sh >
+minMagisk=17000
