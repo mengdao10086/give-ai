@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <time.h>
+#include <stdarg.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/select.h>

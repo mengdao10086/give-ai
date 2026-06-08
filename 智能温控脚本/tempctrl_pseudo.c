@@ -16,8 +16,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
-#include <dirent.h>
-#include <ctype.h>
+#include <stdarg.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 // ======================== 档位定义 ========================
 //
