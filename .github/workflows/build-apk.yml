@@ -47,16 +47,27 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 安装 clang 和 Python3
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang python3
+      - name: 设置 Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
 
-      - name: 编译 tempctrl（静态链接）
-        run: clang -static -o tempctrl 智能温控脚本/tempctrl.c
+      - name: 编译 tempctrl（ARM64 Android 静态链接）
+        run: |
+          NDK="${{ steps.setup-ndk.outputs.ndk-path }}"
+          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          TARGET="aarch64-linux-android21"
+          CC="$TOOLCHAIN/bin/${TARGET}-clang"
+          echo "Compiler: $CC"
+          $CC -static -O2 -o tempctrl 智能温控脚本/tempctrl.c
+          echo "=== 编译产物 ==="
+          file tempctrl
+          ls -lh tempctrl
 
       - name: 修复 PT_TLS 对齐（Android Bionic 兼容）
-        run: python3 智能温控脚本/patch_tls.py tempctrl
+        run: |
+          python3 智能温控脚本/patch_tls.py tempctrl
 
       - name: 验证编译产物
         run: |
