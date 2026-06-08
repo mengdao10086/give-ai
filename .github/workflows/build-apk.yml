@@ -48,20 +48,20 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 设置 Android NDK
-        id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27c
 
       - name: 编译 tempctrl（ARM64 Android 静态链接）
         run: |
-          NDK="${{ steps.setup-ndk.outputs.ndk-path }}"
-          TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
-          TARGET="aarch64-linux-android21"
-          CC="$TOOLCHAIN/bin/${TARGET}-clang"
+          echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
+          TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+          echo "Toolchain: $TOOLCHAIN"
+          ls "$TOOLCHAIN/bin/" | head -10
+          CC="$TOOLCHAIN/bin/aarch64-linux-android21-clang"
           echo "Compiler: $CC"
           $CC -static -O2 -o tempctrl 智能温控脚本/tempctrl.c
-          echo "=== 编译产物 ==="
+          echo "=== 编译成功 ==="
           file tempctrl
           ls -lh tempctrl
 
