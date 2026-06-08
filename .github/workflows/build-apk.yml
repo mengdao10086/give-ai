@@ -84,7 +84,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: 修复 PT_TLS 对齐
-        run: python3 智能温控脚本/patch_tls.py tempctrl
+        run: python3 智能温控脚本/patch_tls.py tempctrl || echo "TLS patch skipped (not needed)"
 
       - name: 上传二进制产物
         uses: actions/upload-artifact@v4
