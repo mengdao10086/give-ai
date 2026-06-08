@@ -47,34 +47,21 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      # 先验证 C 代码在 Linux 上能编译（方便看错误信息）
-      - name: 验证 C 代码语法（x86_64 Linux）
+      - name: 下载 NDK
         run: |
-          which gcc || (sudo apt-get update -qq && sudo apt-get install -y -qq gcc)
-          echo "=== GCC installed ==="
-          gcc --version
-          gcc -O2 -o tempctrl_x64 智能温控脚本/tempctrl.c
-          echo "=== x86_64 编译成功 ==="
-          file tempctrl_x64
+          cd /tmp
+          wget -q https://dl.google.com/android/repository/android-ndk-r27c-linux.zip
+          unzip -q -o android-ndk-r27c-linux.zip
+          rm -rf /opt/ndk 2>/dev/null; mv android-ndk-r27c /opt/ndk
+          echo "OK: $(ls /opt/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android* | wc -l) ARM64 tools"
 
-      # Android NDK 交叉编译 ARM64
-      - name: 设置 Android NDK
-        id: ndk_setup
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27c
-
-      - name: 编译 ARM64 二进制
+      - name: 编译 tempctrl
         run: |
-          echo "=== NDK_PATH: ${{ steps.ndk_setup.outputs.ndk-path }} ==="
-          ls -la "${{ steps.ndk_setup.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/" | head -10
-          CC="${{ steps.ndk_setup.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
-          echo "CC=$CC"
-          $CC --version
+          set -ex
+          CC=/opt/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
           $CC -O2 -o tempctrl 智能温控脚本/tempctrl.c
-          echo "=== ARM64 编译成功 ==="
+          echo "=== OK ==="
           file tempctrl
-          ls -lh tempctrl
 
       - name: 修复 PT_TLS 对齐
         run: python3 智能温控脚本/patch_tls.py tempctrl
@@ -83,4 +70,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tempctrl-daemon
-          path: tempctrl*
+          path: tempctrl
