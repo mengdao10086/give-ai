@@ -42,57 +42,27 @@ jobs:
   build-c:
     name: 编译 C 智能温控守护程序
     runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: r27c
 
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 设置 Android NDK
-        id: ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r27c
-
-      - name: 编译 tempctrl（ARM64 Android）
+      - name: 安装 Android NDK
         run: |
-          set -x
-          NDK_PATH="$ANDROID_NDK_HOME"
-          echo "1. ANDROID_NDK_HOME=$NDK_PATH"
-          echo "2. ndk-path output=${{ steps.ndk.outputs.ndk-path }}"
+          cd /tmp
+          wget -q https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip
+          unzip -q android-ndk-${NDK_VERSION}-linux.zip
+          mv android-ndk-${NDK_VERSION} /opt/ndk
+          echo "NDK installed at /opt/ndk"
+          ls /opt/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android* | head -5
 
-          # 探测真实的 NDK 路径
-          for p in "$NDK_PATH" "${{ steps.ndk.outputs.ndk-path }}" "$ANDROID_SDK_ROOT/ndk" "$ANDROID_HOME/ndk"; do
-            if [ -n "$p" ] && [ -d "$p" ]; then
-              NDK_DIR="$p"
-              echo "Found NDK at: $NDK_DIR"
-              break
-            fi
-          done
-
-          if [ -z "$NDK_DIR" ]; then
-            # fallback: 查找 ndk 目录
-            NDK_DIR=$(find /usr/local/lib/android/sdk/ndk -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1)
-            echo "Fallback NDK: $NDK_DIR"
-          fi
-
-          if [ -z "$NDK_DIR" ] || [ ! -d "$NDK_DIR" ]; then
-            echo "NDK not found!" >&2
-            ls /usr/local/lib/android/sdk/ 2>/dev/null || true
-            exit 1
-          fi
-
-          ls "$NDK_DIR/"
-          TOOLCHAIN="$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64"
-          echo "Toolchain: $TOOLCHAIN"
-          ls "$TOOLCHAIN/bin/aarch64-linux-android"* 2>/dev/null || ls "$TOOLCHAIN/bin/" | head -20
-
-          CC="$TOOLCHAIN/bin/aarch64-linux-android21-clang"
-          if [ ! -f "$CC" ]; then
-            echo "Compiler not found at $CC" >&2
-            ls "$TOOLCHAIN/bin/" 2>/dev/null | head -30
-            exit 1
-          fi
-
+      - name: 编译 tempctrl（ARM64 Android 静态链接）
+        run: |
+          TOOLCHAIN=/opt/ndk/toolchains/llvm/prebuilt/linux-x86_64
+          CC=$TOOLCHAIN/bin/aarch64-linux-android21-clang
+          echo "Compiler: $CC"
           $CC -static -O2 -o tempctrl 智能温控脚本/tempctrl.c
           echo "=== 编译成功 ==="
           file tempctrl
