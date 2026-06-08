@@ -47,13 +47,11 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      # 先验证 C 代码在 Linux 上能编译（快速确认代码语法无误）
+      # 先验证 C 代码在 Linux 上能编译（方便看错误信息）
       - name: 验证 C 代码语法（x86_64 Linux）
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq gcc
-          gcc -Wall -Wextra -O2 -o /dev/null -fsyntax-only 智能温控脚本/tempctrl.c
-          echo "=== 语法检查通过 ==="
-          gcc -O2 -o tempctrl_x64 智能温控脚本/tempctrl.c
+          gcc -O2 -o tempctrl_x64 智能温控脚本/tempctrl.c 2>&1
           echo "=== x86_64 编译成功 ==="
           file tempctrl_x64
 
