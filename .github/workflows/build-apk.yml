@@ -42,61 +42,44 @@ jobs:
   build-c:
     name: 编译 C 智能温控守护程序
     runs-on: ubuntu-latest
-    env:
-      NDK_VERSION: r27c
 
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 安装 Android NDK
+      - name: 设置 Android SDK + NDK
+        uses: android-actions/setup-android@v3
+
+      - name: 安装 NDK 组件
         run: |
-          cd /tmp
-          wget -q https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip
-          unzip -q android-ndk-${NDK_VERSION}-linux.zip
-          mv android-ndk-${NDK_VERSION} /opt/ndk
-          echo "NDK installed at /opt/ndk"
-          ls /opt/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android* | head -5
+          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973" >/dev/null
+          echo "NDK installed at $ANDROID_SDK_ROOT/ndk/27.0.12077973/"
 
       - name: 编译 tempctrl（ARM64 Android）
         run: |
-          set -x
-          TOOLCHAIN=/opt/ndk/toolchains/llvm/prebuilt/linux-x86_64
-          CC=$TOOLCHAIN/bin/aarch64-linux-android21-clang
-          echo "Compiler: $CC"
+          set -e
+          NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
+          TOOLCHAIN="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+          CC="$TOOLCHAIN/bin/aarch64-linux-android21-clang"
+          echo "CC: $CC"
           $CC --version
-          # 先试非静态编译，捕获错误
-          $CC -O2 -o tempctrl 智能温控脚本/tempctrl.c 2>&1 || true
-          echo "=== 非静态编译结果 ==="
-          ls -la tempctrl 2>/dev/null && file tempctrl || echo "非静态编译失败"
-          # 再试静态编译
-          $CC -static -O2 -o tempctrl_static 智能温控脚本/tempctrl.c 2>&1
-          echo "=== 静态编译结果 ==="
-          ls -la tempctrl_static 2>/dev/null && file tempctrl_static || echo "静态编译失败"
-          # 选一个成功的
-          if [ -f tempctrl_static ]; then
-            cp tempctrl_static tempctrl
-          elif [ -f tempctrl ]; then
-            echo "warning: using non-static binary"
-          else
-            echo "both compilations failed" >&2
-            exit 1
-          fi
-          echo "=== 编译成功 ==="
+
+          # 非静态编译（用于调试）
+          $CC -O2 -o tempctrl_dyn 智能温控脚本/tempctrl.c
+          echo "=== 非静态编译成功 ==="
+          file tempctrl_dyn
+
+          # 静态编译（最终产物）
+          $CC -static -O2 -o tempctrl 智能温控脚本/tempctrl.c
+          echo "=== 静态编译成功 ==="
           file tempctrl
           ls -lh tempctrl
 
       - name: 修复 PT_TLS 对齐（Android Bionic 兼容）
-        run: |
-          python3 智能温控脚本/patch_tls.py tempctrl
-
-      - name: 验证编译产物
-        run: |
-          file tempctrl
-          ls -lh tempctrl
+        run: python3 智能温控脚本/patch_tls.py tempctrl
 
       - name: 上传二进制产物
         uses: actions/upload-artifact@v4
         with:
           name: tempctrl-daemon
-          path: tempctrl
+          path: tempctrl*
