@@ -47,35 +47,36 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 设置 Android SDK + NDK
+      - name: 设置 Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: 安装 NDK 组件
+      - name: 安装 NDK
         run: |
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;27.0.12077973" >/dev/null
-          echo "NDK installed at $ANDROID_SDK_ROOT/ndk/27.0.12077973/"
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;27.0.12077973" 2>&1 | tail -5
+          echo "=== 查找 NDK ==="
+          find $ANDROID_SDK_ROOT/ndk -name "aarch64-linux-android21-clang" 2>/dev/null || echo "NOT FOUND"
+          ls -la $ANDROID_SDK_ROOT/ndk/ 2>/dev/null || echo "no ndk dir"
 
-      - name: 编译 tempctrl（ARM64 Android）
+      - name: 编译 tempctrl
         run: |
-          set -e
-          NDK_HOME="$ANDROID_SDK_ROOT/ndk/27.0.12077973"
-          TOOLCHAIN="$NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
-          CC="$TOOLCHAIN/bin/aarch64-linux-android21-clang"
-          echo "CC: $CC"
-          $CC --version
-
-          # 非静态编译（用于调试）
-          $CC -O2 -o tempctrl_dyn 智能温控脚本/tempctrl.c
-          echo "=== 非静态编译成功 ==="
-          file tempctrl_dyn
-
-          # 静态编译（最终产物）
-          $CC -static -O2 -o tempctrl 智能温控脚本/tempctrl.c
-          echo "=== 静态编译成功 ==="
+          set -x
+          NDK=$(find $ANDROID_SDK_ROOT/ndk -maxdepth 2 -type d | sort -V | tail -1)
+          echo "NDK dir: $NDK"
+          if [ -z "$NDK" ] || [ "$NDK" = "$ANDROID_SDK_ROOT/ndk" ]; then
+            # 手动探测
+            NDK=$(ls -d $ANDROID_SDK_ROOT/ndk/*/ 2>/dev/null | sort -V | tail -1)
+            echo "NDK fallback: $NDK"
+          fi
+          echo "NDK_HOME=$NDK"
+          ls -la "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/" | head -20
+          CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"
+          echo "CC=$CC"
+          if [ ! -f "$CC" ]; then exit 1; fi
+          $CC -O2 -o tempctrl 智能温控脚本/tempctrl.c
+          echo "=== 编译成功 ==="
           file tempctrl
-          ls -lh tempctrl
 
-      - name: 修复 PT_TLS 对齐（Android Bionic 兼容）
+      - name: 修复 PT_TLS 对齐
         run: python3 智能温控脚本/patch_tls.py tempctrl
 
       - name: 上传二进制产物
