@@ -58,12 +58,30 @@ jobs:
           echo "NDK installed at /opt/ndk"
           ls /opt/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android* | head -5
 
-      - name: 编译 tempctrl（ARM64 Android 静态链接）
+      - name: 编译 tempctrl（ARM64 Android）
         run: |
+          set -x
           TOOLCHAIN=/opt/ndk/toolchains/llvm/prebuilt/linux-x86_64
           CC=$TOOLCHAIN/bin/aarch64-linux-android21-clang
           echo "Compiler: $CC"
-          $CC -static -O2 -o tempctrl 智能温控脚本/tempctrl.c
+          $CC --version
+          # 先试非静态编译，捕获错误
+          $CC -O2 -o tempctrl 智能温控脚本/tempctrl.c 2>&1 || true
+          echo "=== 非静态编译结果 ==="
+          ls -la tempctrl 2>/dev/null && file tempctrl || echo "非静态编译失败"
+          # 再试静态编译
+          $CC -static -O2 -o tempctrl_static 智能温控脚本/tempctrl.c 2>&1
+          echo "=== 静态编译结果 ==="
+          ls -la tempctrl_static 2>/dev/null && file tempctrl_static || echo "静态编译失败"
+          # 选一个成功的
+          if [ -f tempctrl_static ]; then
+            cp tempctrl_static tempctrl
+          elif [ -f tempctrl ]; then
+            echo "warning: using non-static binary"
+          else
+            echo "both compilations failed" >&2
+            exit 1
+          fi
           echo "=== 编译成功 ==="
           file tempctrl
           ls -lh tempctrl
