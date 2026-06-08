@@ -57,11 +57,31 @@ jobs:
 
       - name: 编译 tempctrl
         run: |
-          set -ex
+          set +e
           CC=/opt/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
-          $CC -O2 -o tempctrl 智能温控脚本/tempctrl.c
+          $CC --version > /dev/null 2>&1
+          # 编译，错误输出到文件，不中断脚本
+          $CC -O2 -o tempctrl 智能温控脚本/tempctrl.c > compile_ok.txt 2>compile_err.txt
+          RC=$?
+          echo "=== exit code: $RC ==="
+          echo "=== stdout ==="
+          cat compile_ok.txt
+          echo "=== stderr ==="
+            cat compile_err.txt
+          if [ $RC -ne 0 ] || [ ! -f tempctrl ]; then
+            echo "COMPILATION FAILED"
+            exit 1
+          fi
           echo "=== OK ==="
           file tempctrl
+
+      - name: 上传编译日志（即使失败）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compile-logs
+          path: compile_*.txt
+          if-no-files-found: ignore
 
       - name: 修复 PT_TLS 对齐
         run: python3 智能温控脚本/patch_tls.py tempctrl
