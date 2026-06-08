@@ -1,0 +1,39 @@
+name: Build APK
+
+on:
+  push:
+    tags:
+      - 'v*'       # 推送 v1.0、v1.1 等 tag 时自动编译
+  workflow_dispatch:  # 也可手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./WaspWingTempCtrl
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: 设置 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 授权 gradlew
+        run: chmod +x gradlew
+
+      - name: 编译 Release APK
+        run: ./gradlew assembleRelease
+
+      - name: 上传 APK 到 Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: WaspWingTempCtrl/app/build/outputs/apk/release/*.apk
