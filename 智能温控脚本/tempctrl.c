@@ -340,6 +340,9 @@ static int apply_level(int level) {
 
 // ======================== FIFO 通信 ========================
 
+// 前向声明（定义在 FIFO 之后，但被 FIFO 函数调用）
+static void reset_state(void);
+
 /**
  * 创建 / 初始化 FIFO
  * 每次启动时重新创建，确保没有陈旧的 FIFO 残留
