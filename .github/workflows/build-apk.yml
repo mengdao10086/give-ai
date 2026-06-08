@@ -3,8 +3,8 @@ name: Build APK
 on:
   push:
     tags:
-      - 'v*'       # 推送 v1.0、v1.1 等 tag 时自动编译
-  workflow_dispatch:  # 也可手动触发
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -32,8 +32,8 @@ jobs:
       - name: 编译 Release APK
         run: ./gradlew assembleRelease
 
-      - name: 上传 APK 到 Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+      - name: 上传 APK 构建产物
+        uses: actions/upload-artifact@v4
         with:
-          files: WaspWingTempCtrl/app/build/outputs/apk/release/*.apk
+          name: WaspWingTempCtrl-APK
+          path: WaspWingTempCtrl/app/build/outputs/apk/release/*.apk
