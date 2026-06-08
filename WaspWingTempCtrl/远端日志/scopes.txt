@@ -1,3 +1,0 @@
-com.flydigi.waspwing.experimental/10310
-	com.example.waspwingtempctrl
-		com.example.waspwingtempctrl.MainHook

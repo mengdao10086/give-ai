@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK + C Daemon
 
 on:
   push:
@@ -7,11 +7,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-apk:
+    name: 编译 LSPosed 模块 APK
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./WaspWingTempCtrl
+        working-directory: ./lsp模块（apk修复+温控接口）
 
     steps:
       - name: 检出代码
@@ -35,5 +36,35 @@ jobs:
       - name: 上传 APK 构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: WaspWingTempCtrl-APK
-          path: WaspWingTempCtrl/app/build/outputs/apk/release/*.apk
+          name: LSPosed-Module-APK
+          path: lsp模块（apk修复+温控接口）/app/build/outputs/apk/release/*.apk
+
+  build-c:
+    name: 编译 C 智能温控守护程序
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 clang 和 Python3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang python3
+
+      - name: 编译 tempctrl（静态链接）
+        run: clang -static -o tempctrl 智能温控脚本/tempctrl.c
+
+      - name: 修复 PT_TLS 对齐（Android Bionic 兼容）
+        run: python3 智能温控脚本/patch_tls.py tempctrl
+
+      - name: 验证编译产物
+        run: |
+          file tempctrl
+          ls -lh tempctrl
+
+      - name: 上传二进制产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: tempctrl-daemon
+          path: tempctrl
