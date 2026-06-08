@@ -1,9 +1,16 @@
 // ================================================================
-// 飞智 WaspWing 散热器 — 智能温控守护程序 (详细伪代码 v2)
+// 飞智 WaspWing 散热器 — 智能温控守护程序 (设计文档 v2)
 // ================================================================
 //
-// 运行环境：Magisk 模块内部，由 service.sh 启动并守护
-// 通信方式：am broadcast → LSPosed 模块 → WaspWingManager.setRunMode()
+// 对应实现：tempctrl.c
+//
+// 通信方式：
+//   LSPosed 模块 → tempctrl：FIFO（/data/local/tmp/b6x_fifo）
+//     '1' = BLE 已连接，请求开始控制（零延迟）
+//     '0' = BLE 已断开，请求停止控制
+//   tempctrl → LSPosed 模块：am broadcast
+//     -a com.flydigi.SET_TEMPERATURE
+//     --ei mode/temperature/windOC/coldOC/windLevel/...
 //
 // 温度单位：整型，0.1°C 精度
 //   电池：/sys/class/power_supply/battery/temp，原生 0.1°C，如 350=35.0°C
@@ -477,28 +484,50 @@ int main(int argc, char *argv[]) {
 }
 
 // ================================================================
+// 设计说明 — 状态机
+// ================================================================
+//
+// tempctrl 守护程序的状态机由 FIFO 事件驱动：
+//
+//   启动 → 非阻塞 peek FIFO
+//     ├─ 有 '1' → 直接进工作模式
+//     └─ 无数据 → wait_for_fifo() 阻塞（CPU 0%）
+//
+//   wait_for_fifo() 阻塞中：
+//     收到 '0' → 记录 disconnect_time，继续等
+//     收到 '1' → 检查 (now - disconnect_time) ≥ 60s
+//       ├─ ≥60s → reset_state()（重读电池温度，强制下发）
+//       └─ <60s → 直接恢复控制
+//
+//   工作模式：
+//     main_loop() 每 5 秒：读温度 → 决策 → 下发
+//     peek FIFO ← 非阻塞，有 '0' 回到阻塞等待
+//
+// ================================================================
+//
+// ================================================================
 // 待确认 / 待实现 清单
 // ================================================================
 //
 // [A] ✅ 档位表已更新（根据 Sheet2）
-//     档位范围改为 0~10，使用查表法代替公式计算。
-//     紧急干预最低档位调整为：1-min=5, 2-min=7, 3-min=9。
+//     档位范围 0~10，查表法代替公式计算。
+//     紧急干预：1-min=5, 2-min=7, 3-min=9。
+//     对应实现：tempctrl.c 中的 build_params()
 //
-// [B] windOC / coldOC 的有效范围
-//     当前假设 windOC=RPM（直接传转速值），coldOC=整型强度值(1~194)。
-//     setRunMode 的参数含义：
-//       - windLevelOverclock(windOC)：固定功率模式风扇转速 (RPM)
-//       - coldLevelOverclock(coldOC)：固定功率模式制冷片强度
-//       - windLevel：智能温控模式风扇转速上限 (RPM)
-//     需要在实际散热器上验证这些参数是否按预期工作。
+// [B] setRunMode 参数含义（已验证）
+//     windLevelOverclock(windOC)：固定功率风扇转速 (RPM)
+//     coldLevelOverclock(coldOC)：固定功率制冷片强度
+//     windLevel：智能温控风扇转速上限 (RPM)
+//     所有参数通过 am broadcast --ei 传递，整型。
 //
-// [C] LSPosed 模块需要扩展
-//     当前模块已支持完整的 7 参数广播协议，无须额外修改。
+// [C] ✅ 唤醒机制改为 FIFO（非轮询）
+//     模块写 FIFO → daemon 阻塞 read() 零延迟唤醒
+//     断联超时 ≥60s 自动 reset_state()
 //
 // [D] 断联超时时间
-//     当前 DISCONNECT_TIMEOUT=1（约 1 分钟），如需调整可改。
+//     当前 DISCONNECT_RESET_SEC=60（60 秒），可根据实际需要调整。
 //
-// [E] 去重逻辑
-//     已在 tempctrl.c 中实现，原理：参数与上次完全相同时跳过下发。
+// [E] ✅ 去重逻辑
+//     apply_level() 中缓存上次发送的参数，完全相同时跳过下发。
 //
 // ================================================================
