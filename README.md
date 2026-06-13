@@ -69,6 +69,7 @@ APK 和 C 守护程序均由 GitHub Actions 自动构建：
 - 也可在 Actions 页面手动 `workflow_dispatch` 触发
 - 构建产物在对应运行记录的 Artifacts 中下载
 
+> **分支**：所有开发直接提交到 **`main`** 分支（默认分支），不经过 master。
 > **CI 注意事项**：NDK (~700MB) 已配置 `actions/cache` 缓存，首次运行后不再重复下载。
 > 使用 `workflow_dispatch` 测试，不要推送 release tag 直到测试通过。
 
