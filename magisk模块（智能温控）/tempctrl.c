@@ -128,6 +128,10 @@ static char config_path[256] = "";
 // 配置文件的最后修改时间（用于热重载检测）
 static time_t config_mtime = 0;
 
+// 前向声明（配置系统函数位于 write_log/clamp 之前，C 要求先声明后使用）
+static void write_log(const char *fmt, ...);
+static inline int clamp(int val, int lo, int hi);
+
 /**
  * 从 KEY=VALUE 格式的配置文件加载参数
  * 遇到不认识的 key 或格式错误的行，跳过并记日志
