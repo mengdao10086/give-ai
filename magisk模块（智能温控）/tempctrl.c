@@ -228,10 +228,8 @@ static void set_default_log_path(void) {
 /**
  * 自动检测配置文件路径
  *
- * 策略：
- *   1. 通过 /proc/self/exe 获取 tempctrl 自身路径
- *   2. 同目录下找 profile.conf（独立 Magisk 模块）
- *   3. 父目录下找 profile.conf（scene_systemless/others 场景）
+ * 通过 /proc/self/exe 获取 tempctrl 自身路径，
+ * 在同目录下找 profile.conf
  *
  * 返回 1=找到，0=未找到
  */
@@ -246,17 +244,9 @@ static int detect_config_path(void) {
     if (!last_slash) return 0;
     *last_slash = '\0';
 
-    // 尝试同目录
+    // 在同目录下找 profile.conf
     snprintf(config_path, sizeof(config_path), "%s/profile.conf", exe_path);
     if (access(config_path, F_OK) == 0) return 1;
-
-    // 尝试父目录（scene_systemless: others/profile.conf → ../profile.conf）
-    char *parent_slash = strrchr(exe_path, '/');
-    if (parent_slash) {
-        *parent_slash = '\0';
-        snprintf(config_path, sizeof(config_path), "%s/profile.conf", exe_path);
-        if (access(config_path, F_OK) == 0) return 1;
-    }
 
     config_path[0] = '\0';
     return 0;
