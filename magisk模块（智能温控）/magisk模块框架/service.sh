@@ -6,7 +6,9 @@
 #
 # KernelSU 的模块目录通常挂载了 noexec，不能直接运行二进制，
 # 所以将 tempctrl 复制到 /data/local/tmp/ 再执行。
-# profile.conf 通过 --config 参数指定原模块路径，支持热重载。
+# tempctrl 通过 /proc/self/exe 自动定位 profile.conf（同目录/父目录）
+#
+# 不再使用 FIFO 通信，改为 pgrep 检测 App 进程。
 # ============================================================
 
 MODDIR=${0%/*}
@@ -23,8 +25,8 @@ done
 cp "$MODDIR/tempctrl" /data/local/tmp/tempctrl
 chmod 755 /data/local/tmp/tempctrl
 
+# 复制配置文件到同目录（/proc/self/exe 自动定位）
+cp "$MODDIR/profile.conf" /data/local/tmp/profile.conf 2>/dev/null
+
 # 启动智能温控守护程序
-# 用 --config 显式指定原模块中的配置，支持热重载
-nohup /data/local/tmp/tempctrl \
-  --config "$MODDIR/profile.conf" \
-  >> /cache/tempctrl.log 2>&1 &
+nohup /data/local/tmp/tempctrl >> /cache/tempctrl.log 2>&1 &

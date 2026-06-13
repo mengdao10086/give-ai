@@ -30,25 +30,7 @@ public class MainHook implements IXposedHookLoadPackage {
 
     private static final String TARGET_PACKAGE = "com.flydigi.waspwing.experimental";
     private static final String TAG = "[WaspWingTempCtrl]";
-    private static final String FIFO_PATH = "/data/local/tmp/b6x_fifo";
     private static Object capturedWaspWingMgr = null;  // 构造函数钩子捕获的实例
-
-    /**
-     * 向 FIFO 写入一个字节，通知 tempctrl 守护进程
-     * '1' = BLE 已连接，请求开始控制
-     * '0' = BLE 已断开，请求停止控制
-     */
-    private static void writeFifo(String data) {
-        try {
-            // KernelSU 下 App 进程无权限写 /data/local/tmp/，需要用 su 提权
-            Runtime.getRuntime().exec(new String[]{
-                "su", "-c",
-                "echo " + data + " > " + FIFO_PATH
-            });
-        } catch (Exception e) {
-            // FIFO 可能还不存在（守护进程还未启动），忽略
-        }
-    }
 
     // ========== 智能温控广播接收器（v2.0） ==========
     // 接收 tempctrl 发送的 am broadcast，调用 setRunMode 控制散热器
@@ -144,9 +126,7 @@ public class MainHook implements IXposedHookLoadPackage {
                                 XposedHelpers.setBooleanField(controller, "inScanning", false);
                                 XposedBridge.log(TAG + " 控制器：扫描已停止");
 
-                                // BLE 已连接 → 通知守护进程
-                                writeFifo("1");
-                                XposedBridge.log(TAG + " FIFO → '1'（BLE 已连接）");
+                                // BLE 已连接（tempctrl 通过 pgrep 检测，无需 FIFO）
                             } catch (Exception e) {
                                 XposedBridge.log(TAG + " 控制器修复异常: " + e.getMessage());
                             }
@@ -264,8 +244,7 @@ public class MainHook implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
-                            writeFifo("0");
-                            XposedBridge.log(TAG + " FIFO → '0'（BLE 断联）");
+                            XposedBridge.log(TAG + " BLE 断联（tempctrl 通过 pgrep 检测）");
                         }
                     });
             XposedBridge.log(TAG + " 已钩住 BluetoothGatt.disconnect → FIFO '0'");
@@ -395,8 +374,7 @@ public class MainHook implements IXposedHookLoadPackage {
                                 Boolean isConnected = (Boolean) XposedHelpers.callMethod(connLd, "getValue");
 
                                 if (isConnected != null && isConnected) {
-                                    writeFifo("1");
-                                    XposedBridge.log(TAG + " FIFO → '1'（onResume + BLE 已连接）");
+                                    XposedBridge.log(TAG + " onResume + BLE 已连接（tempctrl 通过 pgrep 检测）");
                                 } else {
                                     XposedBridge.log(TAG + " onResume 但 BLE 未连接，不唤醒");
                                 }

@@ -2,12 +2,9 @@
 // tempctrl.c — 飞智 WaspWing 散热器智能温控守护程序
 // ================================================================
 //
-// 运行环境：Magisk 模块，由 service.sh 启动并守护
-// 通信方式：FIFO 接收模块信号 + am broadcast 发出控制指令
-//
-// FIFO 协议（/data/local/tmp/b6x_fifo）：
-//   '1' = BLE 已连接，请求开始控制
-//   '0' = BLE 已断开，请求停止控制
+// 运行环境：Magisk / KernelSU 模块，由 service.sh 启动并守护
+// App 进程检测：pgrep -f com.flydigi.waspwing.experimental
+// 控制指令：am broadcast → LSPosed 模块 → WaspWingManager.setRunMode
 //
 // 温度单位：整型 0.1°C（电池原生单位，CPU m°C ÷ 100）
 //   例：350 = 35.0°C, 753 = 75.3°C
@@ -26,8 +23,6 @@
 #include <time.h>
 #include <stdarg.h>
 #include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/select.h>
 
 // ======================== 档位定义 ========================
 //
@@ -111,8 +106,8 @@ static int EMERG_FORCED_3 = 9;
 // --- 冷却期 —— 可由 profile.conf 覆盖 ---
 static int COOLDOWN_CYCLES = 4;     // 每次调整后冷却 20 秒（4×5s）
 
-// --- FIFO 通信（代码定死，不可改配置——路径变动会导致通信断裂）---
-#define FIFO_PATH  "/data/local/tmp/b6x_fifo"
+// --- FIFO 通信（已废弃，改用 pgrep 检测 App 进程）---
+// 保留 DISCONNECT_RESET_SEC 作为断联超时重置
 static int DISCONNECT_RESET_SEC = 60;   // 断联超时秒数（可配置）
 
 // --- CPU 滤波系数（百分比，0~100，默认 25=α=0.25）---
@@ -272,9 +267,9 @@ static int last_windOC = -1;
 static int last_coldOC = -1;
 static int last_windLevel = -1;
 
-// --- FIFO 状态 ---
-static int fifo_fd = -1;              // FIFO 文件描述符
-static time_t disconnect_time = 0;     // 上次收到 "0" 的时间戳（用于断联超时重置）
+// --- App 进程检测 ---
+static int app_was_alive = 0;          // 上次检测时 App 是否存活
+static time_t app_dead_since = 0;      // App 失联起始时间戳
 
 // ======================== 辅助函数 ========================
 
@@ -468,120 +463,14 @@ static int apply_level(int level) {
     return 1;
 }
 
-// ======================== FIFO 通信 ========================
-
-// 前向声明（定义在 FIFO 之后，但被 FIFO 函数调用）
-static void reset_state(void);
+// ======================== App 进程检测 ========================
 
 /**
- * 创建 / 初始化 FIFO
- * 每次启动时重新创建，确保没有陈旧的 FIFO 残留
+ * 通过 pgrep 检测飞智 App 进程是否存活
+ * 返回 1=存活，0=已死
  */
-static void init_fifo(void) {
-    unlink(FIFO_PATH);
-    if (mkfifo(FIFO_PATH, 0666) != 0) {
-        write_log("FIFO mkfifo failed, may already exist");
-    }
-    write_log("FIFO created at %s", FIFO_PATH);
-}
-
-/**
- * 阻塞等待 FIFO 信号
- *
- * 读取 FIFO 字节：
- *   '1' → 模块要求唤醒（返回 1）
- *   '0' → 模块要求停止（记录时间，继续等待下一个信号）
- *
- * 返回 1=应进入工作模式，0=进程退出
- */
-static int wait_for_fifo(void) {
-    write_log("FIFO waiting for signal (blocking)...");
-
-    // 关闭旧 fd 并以阻塞模式重新打开
-    if (fifo_fd >= 0) close(fifo_fd);
-    fifo_fd = open(FIFO_PATH, O_RDONLY);
-    if (fifo_fd < 0) {
-        write_log("FIFO open failed, retrying in 5s");
-        return 5;  // 容错：等 5 秒重试
-    }
-
-    char c;
-    while (running) {
-        int n = read(fifo_fd, &c, 1);
-        if (!running) return 0;
-
-        if (n == 1) {
-            if (c == '1') {
-                // 唤醒：检查是否超时重置
-                if (disconnect_time > 0) {
-                    time_t elapsed = time(NULL) - disconnect_time;
-                    if (elapsed >= DISCONNECT_RESET_SEC) {
-                        write_log("WAKE disconnect %lds ago ≥ %ds, resetting",
-                                  (long)elapsed, DISCONNECT_RESET_SEC);
-                        reset_state();
-                    } else {
-                        write_log("WAKE disconnect only %lds ago, continue",
-                                  (long)elapsed);
-                    }
-                    disconnect_time = 0;
-                }
-                return 1;  // 进入工作模式
-
-            } else if (c == '0') {
-                disconnect_time = time(NULL);
-                write_log("FIFO got '0', disconnect timer started");
-                // 继续阻塞等下一个信号
-            }
-        } else if (n == 0) {
-            // 所有写端关闭（如模块被杀后重新打开），重连 FIFO
-            close(fifo_fd);
-            fifo_fd = open(FIFO_PATH, O_RDONLY);
-            if (fifo_fd < 0) {
-                write_log("FIFO reopen failed, retry in 5s");
-                sleep(5);
-                return 5;
-            }
-        }
-    }
-    return 0;
-}
-
-/**
- * 非阻塞 peek FIFO，检查模块是否发送了休眠信号
- *
- * 在每轮控制循环结束后调用，检查是否有 "0" 到达。
- * 如果 FIFO 暂时写端全关（read 返回 0），自动重连。
- *
- * 返回 1=模块要求停止，0=继续工作
- */
-static int peek_fifo(void) {
-    if (fifo_fd < 0) {
-        fifo_fd = open(FIFO_PATH, O_RDONLY | O_NONBLOCK);
-        if (fifo_fd < 0) return 0;
-    }
-
-    struct timeval tv = {0, 0};
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(fifo_fd, &fds);
-
-    if (select(fifo_fd + 1, &fds, NULL, NULL, &tv) > 0) {
-        char c;
-        int n = read(fifo_fd, &c, 1);
-        if (n == 1) {
-            if (c == '0') {
-                disconnect_time = time(NULL);
-                write_log("FIFO peek got '0', going to sleep");
-                return 1;   // 停止工作
-            }
-            // '1' 在工作模式中已处于活跃状态，忽略
-        } else if (n == 0) {
-            // 写端全关，重建 FIFO
-            close(fifo_fd);
-            fifo_fd = open(FIFO_PATH, O_RDONLY | O_NONBLOCK);
-        }
-    }
-    return 0;  // 继续工作
+static int is_app_alive(void) {
+    return system("pgrep -f 'com.flydigi.waspwing.experimental' >/dev/null 2>&1") == 0;
 }
 
 // ======================== 状态重置 ========================
@@ -611,13 +500,11 @@ static void reset_state(void) {
     first_run = 1;
     prev_batt_temp = -1;     // 重置温度变化检测
 
+    app_dead_since = 0;
+    app_was_alive = 1;                 // 重置后视为 App 存活，等待检测
+
     // 清发送缓存，确保重置参数一定下发
     last_sent_valid = 0;
-    last_mode = -1;
-    last_target_temp = -1;
-    last_windOC = -1;
-    last_coldOC = -1;
-    last_windLevel = -1;
 
     // 立即下发重置后的档位
     apply_level(battery_fan_level);
@@ -814,6 +701,10 @@ static void main_loop(void) {
 
     // 4. 下发（仅在参数变化时实际发送）
     apply_level(final_level);
+
+    // 5. 同步电池档位 = 实际下发的档位
+    // 这样电池控制始终以上次实际使用的档位为基础进行升降
+    battery_fan_level = final_level;
 }
 
 // ======================== 程序入口 ========================
@@ -822,10 +713,8 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, handle_signal);
     signal(SIGINT,  handle_signal);
 
-    // --- 根据二进制名设定默认日志路径（profile.conf 可覆盖）---
+    // --- 日志路径、配置加载 ---
     set_default_log_path();
-
-    // --- 加载配置（优先 --config 参数，否则自动检测）---
     if (argc >= 3 && strcmp(argv[1], "--config") == 0) {
         strncpy(config_path, argv[2], sizeof(config_path) - 1);
         config_path[sizeof(config_path) - 1] = '\0';
@@ -833,122 +722,88 @@ int main(int argc, char *argv[]) {
     } else if (detect_config_path()) {
         load_config(config_path);
     } else {
-        // 没找到配置文件，全用默认值
         config_path[0] = '\0';
     }
-
-    // 如果加载了配置，记录当前 mtime
     if (config_path[0] != '\0') {
         struct stat st;
         if (stat(config_path, &st) == 0) config_mtime = st.st_mtime;
     }
 
-    // --- 初始化 ---
-    init_fifo();
+    // --- 初始化档位 ---
     init_fan_level();
-
     write_log("=== tempctrl STARTED (level=%d) ===", battery_fan_level);
 
-    // --- 首次启动：非阻塞 peek FIFO 看模块是否已经活跃 ---
-    int start_ok = 0;
-    int try_fd = open(FIFO_PATH, O_RDONLY | O_NONBLOCK);
-    if (try_fd >= 0) {
-        char c;
-        if (read(try_fd, &c, 1) == 1 && c == '1') {
-            start_ok = 1;  // 模块已经在工作
-        }
-        close(try_fd);
-    }
-
-    if (!start_ok) {
-        // 模块未激活，阻塞等待信号
-        write_log("WAIT no initial signal, waiting on FIFO...");
-        int ret = wait_for_fifo();
-        if (ret == 0) goto exit;       // 收到退出信号
-        if (ret == 5) start_ok = 0;    // FIFO 创建失败，重试
-        else start_ok = 1;
-    }
-
-    if (start_ok) {
-        // --- 进入工作模式 ---
-        // 初始化所有状态（wait_for_fifo 里可能已经 reset_state 了）
-        cooldown_counter = 0;
-        emergency_level = 0;
-        forced_min_level = 0;
-        first_run = 1;
-
-        // 强制首次下发
-        last_sent_valid = 0;
-        apply_level(battery_fan_level);
-
-        write_log("ENTER work mode");
-
-        // ---- 主控制循环：每 5 秒一次 ----
-        while (running) {
-            main_loop();
-
-            // 每周期结束 peek FIFO 看有没有 "0"
-            if (peek_fifo()) {
-                write_log("SLEEP module deactivated, waiting on FIFO...");
-                goto sleep_wait;
-            }
-
-            // 逐秒睡眠（可被信号中断）
-            for (int i = 0; i < 5 && running; i++) {
-                // 每秒钟也 peek 一下，及时响应
-                if (i > 0 && peek_fifo()) {
-                    write_log("SLEEP module deactivated mid-cycle");
-                    goto sleep_wait;
-                }
-                sleep(1);
-            }
-        }
-    }
-
-sleep_wait:
-    // --- 回到 FIFO 等待 ---
+    // --- 等待 App 进程出现 ---
     while (running) {
-        int ret = wait_for_fifo();
-        if (ret == 0) break;       // 退出
-        if (ret == 5) continue;    // FIFO 错误重试
+        if (is_app_alive()) {
+            write_log("WAIT app detected, entering work mode");
+            break;
+        }
+        write_log("WAIT app not found, retry in 5s...");
+        sleep(5);
+    }
+    if (!running) goto exit;
 
-        // 收到 "1"，重新进入工作模式
-        write_log("ENTER work mode (wake from sleep)");
+    // --- 进入工作模式 ---
+    app_was_alive = 1;
+    cooldown_counter = 0;
+    emergency_level = 0;
+    forced_min_level = 0;
+    first_run = 1;
 
-        // 如果 wait_for_fifo 没有触发重置但需要初始化
-        if (first_run) {
-            init_fan_level();
-            cooldown_counter = 0;
-            emergency_level = 0;
-            forced_min_level = 0;
-            first_run = 1;
+    // 强制首次下发
+    last_sent_valid = 0;
+    apply_level(battery_fan_level);
+    write_log("ENTER work mode");
+
+    // ---- 主控制循环：每 5 秒一次 ----
+    while (running) {
+        main_loop();
+
+        // App 进程存活检测
+        if (!is_app_alive()) {
+            // App 刚死 → 记录失联时间
+            if (app_was_alive) {
+                app_dead_since = time(NULL);
+                app_was_alive = 0;
+                write_log("APP gone, waiting for reconnect...");
+            }
+
+            // 等待 App 复活的循环
+            while (running) {
+                sleep(5);
+                if (is_app_alive()) {
+                    time_t elapsed = time(NULL) - app_dead_since;
+                    if (elapsed >= DISCONNECT_RESET_SEC) {
+                        write_log("WAKE app back after %lds (≥%ds), resetting",
+                                  (long)elapsed, DISCONNECT_RESET_SEC);
+                        reset_state();
+                    } else {
+                        write_log("WAKE app back after %lds, continuing",
+                                  (long)elapsed);
+                    }
+                    app_was_alive = 1;
+                    last_sent_valid = 0;          // 强制重发当前档位
+                    apply_level(battery_fan_level);
+                    write_log("ENTER work mode (reconnect)");
+                    break;
+                }
+            }
+        } else if (!app_was_alive) {
+            // App 已复活（但上一轮检测还活着，不用重置）
+            app_was_alive = 1;
+            last_sent_valid = 0;
+            apply_level(battery_fan_level);
+            write_log("ENTER work mode (app revived)");
         }
 
-        last_sent_valid = 0;
-        apply_level(battery_fan_level);
-
-        // 重新进入主控制循环
-        while (running) {
-            main_loop();
-
-            if (peek_fifo()) {
-                write_log("SLEEP module deactivated");
-                goto sleep_wait;
-            }
-
-            for (int i = 0; i < 5 && running; i++) {
-                if (i > 0 && peek_fifo()) {
-                    write_log("SLEEP module deactivated mid-cycle");
-                    goto sleep_wait;
-                }
-                sleep(1);
-            }
+        // 逐秒睡眠（可被信号中断）
+        for (int i = 0; i < 5 && running; i++) {
+            sleep(1);
         }
     }
 
 exit:
     write_log("=== tempctrl EXIT ===");
-    if (fifo_fd >= 0) close(fifo_fd);
-    unlink(FIFO_PATH);
     return 0;
 }
