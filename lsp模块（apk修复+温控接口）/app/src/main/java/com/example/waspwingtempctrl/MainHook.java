@@ -35,8 +35,9 @@ public class MainHook implements IXposedHookLoadPackage {
      */
     private static void writeFifo(String data) {
         try {
+            // KernelSU 下 App 进程无权限写 /data/local/tmp/，需要用 su 提权
             Runtime.getRuntime().exec(new String[]{
-                "/system/bin/sh", "-c",
+                "su", "-c",
                 "echo " + data + " > " + FIFO_PATH
             });
         } catch (Exception e) {
