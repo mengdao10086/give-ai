@@ -118,8 +118,8 @@ static int DISCONNECT_RESET_SEC = 60;   // 断联超时秒数（可配置）
 // --- CPU 滤波系数（百分比，0~100，默认 25=α=0.25）---
 static int CPU_FILTER_ALPHA = 25;
 
-// --- 日志路径（可由 profile.conf 覆盖）---
-static char log_file_path[256] = "/cache/tempctrl.log";
+// --- 日志路径（默认根据二进制名自动生成，可由 profile.conf 覆盖）---
+static char log_file_path[256] = "";
 
 // ======================== 配置文件系统 ========================
 
@@ -198,6 +198,27 @@ static void load_config(const char *path) {
     fclose(f);
 
     write_log("CONFIG loaded %d params from %s", loaded, path);
+}
+
+/**
+ * 根据二进制名设定默认日志路径
+ * 例：tempctrl → /cache/tempctrl.log
+ * 此值为默认值，profile.conf 中 LOG_FILE 可覆盖
+ */
+static void set_default_log_path(void) {
+    char exe_path[512];
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len > 0) {
+        exe_path[len] = '\0';
+        char *slash = strrchr(exe_path, '/');
+        if (slash) {
+            slash++;
+            snprintf(log_file_path, sizeof(log_file_path), "/cache/%s.log", slash);
+            return;
+        }
+    }
+    // fallback
+    strncpy(log_file_path, "/cache/tempctrl.log", sizeof(log_file_path) - 1);
 }
 
 /**
@@ -806,6 +827,9 @@ static void main_loop(void) {
 int main(int argc, char *argv[]) {
     signal(SIGTERM, handle_signal);
     signal(SIGINT,  handle_signal);
+
+    // --- 根据二进制名设定默认日志路径（profile.conf 可覆盖）---
+    set_default_log_path();
 
     // --- 加载配置（优先 --config 参数，否则自动检测）---
     if (argc >= 3 && strcmp(argv[1], "--config") == 0) {
