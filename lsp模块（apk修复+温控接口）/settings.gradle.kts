@@ -11,8 +11,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // Xposed API (JCenter 已关闭，使用 Aliyun 镜像)
+        // Xposed API — 优先 Aliyun 镜像，兜底官方仓库
         maven("https://maven.aliyun.com/repository/jcenter")
+        maven("https://api.xposed.info/repository")
     }
 }
 
