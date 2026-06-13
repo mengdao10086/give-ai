@@ -14,8 +14,18 @@ android {
         versionName = "2.0"
     }
 
+    signingConfigs {
+        create("b6x") {
+            storeFile = file("b6x.keystore")
+            storePassword = "android"
+            keyAlias = "b6x"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("b6x")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

@@ -30,14 +30,14 @@ jobs:
       - name: 授权 gradlew
         run: chmod +x gradlew
 
-      - name: 编译 Debug APK（自动签名，直接可装）
-        run: ./gradlew assembleDebug
+      - name: 编译 APK（b6x keystore 签名，每次签名一致）
+        run: ./gradlew assembleRelease
 
       - name: 上传 APK 构建产物
         uses: actions/upload-artifact@v4
         with:
           name: LSPosed-Module-APK
-          path: lsp模块（apk修复+温控接口）/app/build/outputs/apk/debug/*.apk
+          path: lsp模块（apk修复+温控接口）/app/build/outputs/apk/release/*.apk
 
   build-c:
     name: 编译 C 智能温控守护程序
