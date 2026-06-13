@@ -11,7 +11,7 @@
 | 组件 | 路径 | 说明 | 状态 |
 |------|------|------|------|
 | **LSPosed 模块** | [lsp模块（apk修复+温控接口）/](lsp模块（apk修复+温控接口）/README.md) | 修复 Android 16 BLE Bug + 提供智能温控广播接口 | ✅ v1.0 已发布 |
-| **C 守护程序** | [智能温控脚本/](智能温控脚本/tempctrl.c) | FIFO 事件驱动的智能温控算法 | ⚙️ v2.0 开发中 |
+| **C 守护程序** | [magisk模块（智能温控）/](magisk模块（智能温控）/tempctrl.c) | FIFO 事件驱动的智能温控算法 | ⚙️ v2.0 开发中 |
 
 ### LSPosed 模块功能
 
@@ -36,7 +36,7 @@
 
 ### 安装 LSPosed 模块
 
-1. 从 [Actions 页面](https://github.com/mengdao10086/b6x-Enhancement-Plan-ai/actions) 下载最新 APK（`LSPosed-Module-APK` 构件）
+1. 从 [Actions 页面](https://github.com/mengdao10086/b6x-Enhancement-Plan-ai/actions) 下载最新 APK（`LSPosed-Module-APK` 构件）和 Magisk 模块（`b6x-Magisk-Module` 构件）
 2. 安装到手机
 3. 在 LSPosed 中启用模块，作用域勾选 `com.flydigi.waspwing.experimental`
 4. 强制停止飞智散热器 App，重新打开
@@ -55,10 +55,11 @@ am broadcast -a com.flydigi.SET_TEMPERATURE \
 
 ```
 ├── lsp模块（apk修复+温控接口）/     ← LSPosed 模块（Android 项目）
-├── 智能温控脚本/                    ← C 守护程序源码
+├── magisk模块（智能温控）/          ← C 守护程序源码 + Magisk 模块框架
 ├── 参考资料/                        ← 原始 APK + 反编译分析
 ├── 修复历程/                        ← Bug 修复全记录
 ├── .github/workflows/              ← CI 自动构建（APK + C 二进制）
+└── log.md                           ← 修改日志（git 已忽略，仅本地）
 └── README.md                       ← 本文件
 ```
 
@@ -119,7 +120,7 @@ python3 patch_tls.py tempctrl   # 修复 PT_TLS 对齐
 | Git 远程 | `https://github.com/mengdao10086/b6x-Enhancement-Plan-ai.git` |
 | 默认分支 | `main` |
 | 模块编译 | Android Studio 打开 `lsp模块（apk修复+温控接口）/` → Build APK |
-| C 编译 | Termux: `clang -static -O2 -o tempctrl tempctrl.c && python3 patch_tls.py tempctrl` |
+| C 编译 | Termux: `cd magisk模块（智能温控） && clang -static -O2 -o tempctrl tempctrl.c && python3 patch_tls.py tempctrl` |
 | 模块安装 | LSPosed 勾选模块 + 作用域 `com.flydigi.waspwing.experimental` → 强制停止 App |
 
 ## 已知风险

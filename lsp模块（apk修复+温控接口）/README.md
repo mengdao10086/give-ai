@@ -125,7 +125,7 @@ export ANDROID_HOME=/path/to/Android/Sdk
 在 Termux 中编译（ARM64 Android）：
 ```bash
 pkg install clang python3
-cd 智能温控脚本
+cd magisk模块（智能温控）
 clang -static -O2 -o tempctrl tempctrl.c
 python3 patch_tls.py tempctrl
 ```

@@ -74,7 +74,7 @@ jobs:
           CC=/opt/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang
           $CC --version > /dev/null 2>&1
           # 编译，错误输出到文件，不中断脚本
-          $CC -O2 -o tempctrl 智能温控脚本/tempctrl.c > compile_ok.txt 2>compile_err.txt
+          $CC -O2 -o tempctrl magisk模块（智能温控）/tempctrl.c > compile_ok.txt 2>compile_err.txt
           RC=$?
           echo "=== exit code: $RC ==="
           echo "=== stdout ==="
@@ -97,10 +97,17 @@ jobs:
           if-no-files-found: ignore
 
       - name: 修复 PT_TLS 对齐
-        run: python3 智能温控脚本/patch_tls.py tempctrl || echo "TLS patch skipped (not needed)"
+        run: python3 magisk模块（智能温控）/patch_tls.py tempctrl || echo "TLS patch skipped (not needed)"
 
-      - name: 上传二进制产物
+      - name: 打包 Magisk 模块框架（将二进制复制到模块目录）
+        run: |
+          cp tempctrl magisk模块（智能温控）/magisk模块框架/
+          echo "Module contents:"
+          ls -la magisk模块（智能温控）/magisk模块框架/
+
+      - name: 上传 Magisk 模块包（刷入即用）
         uses: actions/upload-artifact@v4
         with:
-          name: tempctrl-daemon
-          path: tempctrl
+          name: b6x-Magisk-Module
+          path: magisk模块（智能温控）/magisk模块框架/
+          if-no-files-found: error

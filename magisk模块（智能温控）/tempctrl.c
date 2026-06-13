@@ -90,37 +90,152 @@ static const int COLD_INTENSITY_TABLE[11] = {
 #define COLD_MIN             1
 #define COLD_MAX           194     // 最大有效值（以上需超频模式，本场景不用）
 
-// --- 电池温度控制（0.1°C）---
-#define BATT_BASELINE      350     // 基准温度 35.0°C
-#define BATT_ZONE_1          7     // ±0.7°C → 不变（死区）
-#define BATT_ZONE_2         20     // ±2.0°C → 1 档（超过→2档）
+// --- 电池温度控制（0.1°C）—— 可由 profile.conf 覆盖 ---
+static int BATT_BASELINE = 350;     // 基准温度 35.0°C
+static int BATT_ZONE_1   = 7;       // ±0.7°C → 不变（死区）
+static int BATT_ZONE_2   = 20;      // ±2.0°C → 1 档（超过→2档）
 
-// --- CPU 紧急干预阈值（0.1°C）---
-#define CPU_EMERG_3        850     // >85.0°C → 等级 3
-#define CPU_EMERG_2        750     // >75.0°C → 等级 2
-#define CPU_EMERG_1        650     // >65.0°C → 等级 1
-#define CPU_RECOVER_0      550     // <55.0°C → 清除紧急
-#define CPU_RECOVER_1      650     // <65.0°C 且 ≥2 级时降为 1
-#define CPU_RECOVER_2      750     // <75.0°C 且 ≥3 级时降为 2
+// --- CPU 紧急干预阈值（0.1°C）—— 可由 profile.conf 覆盖 ---
+static int CPU_EMERG_3   = 850;     // >85.0°C → 等级 3
+static int CPU_EMERG_2   = 750;     // >75.0°C → 等级 2
+static int CPU_EMERG_1   = 650;     // >65.0°C → 等级 1
+static int CPU_RECOVER_0 = 550;     // <55.0°C → 清除紧急
+static int CPU_RECOVER_1 = 650;     // <65.0°C 且 ≥2 级时降为 1
+static int CPU_RECOVER_2 = 750;     // <75.0°C 且 ≥3 级时降为 2
 
-// --- 紧急强制最低档位 ---
-// 根据 Sheet2 标注：
-//   紧急1-min → 档位 5（智能 16°C/4000RPM）
-//   紧急2-min → 档位 7（智能 14°C/5100RPM）
-//   紧急3-min → 档位 9（智能 12°C/5800RPM）
-#define EMERG_FORCED_1       5
-#define EMERG_FORCED_2       7
-#define EMERG_FORCED_3       9
+// --- 紧急强制最低档位 —— 可由 profile.conf 覆盖 ---
+static int EMERG_FORCED_1 = 5;
+static int EMERG_FORCED_2 = 7;
+static int EMERG_FORCED_3 = 9;
 
-// --- 冷却期 ---
-#define COOLDOWN_CYCLES      4     // 每次调整后冷却 20 秒（4×5s）
+// --- 冷却期 —— 可由 profile.conf 覆盖 ---
+static int COOLDOWN_CYCLES = 4;     // 每次调整后冷却 20 秒（4×5s）
 
-// --- FIFO 通信 ---
+// --- FIFO 通信（代码定死，不可改配置——路径变动会导致通信断裂）---
 #define FIFO_PATH  "/data/local/tmp/b6x_fifo"
-#define DISCONNECT_RESET_SEC  60   // 断联超过 60 秒 → 下次连接视为新开始
+static int DISCONNECT_RESET_SEC = 60;   // 断联超时秒数（可配置）
 
-// --- 日志 ---
-#define LOG_FILE "/cache/tempctrl.log"
+// --- CPU 滤波系数（百分比，0~100，默认 25=α=0.25）---
+static int CPU_FILTER_ALPHA = 25;
+
+// --- 日志路径（可由 profile.conf 覆盖）---
+static char log_file_path[256] = "/cache/tempctrl.log";
+
+// ======================== 配置文件系统 ========================
+
+// 配置文件路径（自动检测或 --config 指定）
+static char config_path[256] = "";
+// 配置文件的最后修改时间（用于热重载检测）
+static time_t config_mtime = 0;
+
+/**
+ * 从 KEY=VALUE 格式的配置文件加载参数
+ * 遇到不认识的 key 或格式错误的行，跳过并记日志
+ * 找不到文件则不修改任何变量（保持默认值）
+ */
+static void load_config(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        write_log("CONFIG cannot open %s", path);
+        return;
+    }
+
+    char line[256];
+    int loaded = 0;
+    while (fgets(line, sizeof(line), f)) {
+        char *p = line;
+        // 跳过行首空白
+        while (*p == ' ' || *p == '\t') p++;
+        // 跳过注释和空行
+        if (*p == '#' || *p == '\n' || *p == '\0') continue;
+
+        // 按 '=' 分割 key/value
+        char *eq = strchr(p, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        char *key = p;
+        char *val_str = eq + 1;
+
+        // 去掉 key 尾部空白
+        char *end = key + strlen(key) - 1;
+        while (end > key && (*end == ' ' || *end == '\t')) *end-- = '\0';
+
+        int val = atoi(val_str);
+
+        // ---- 匹配 key ----
+        if      (strcmp(key, "BATT_BASELINE") == 0)        BATT_BASELINE      = clamp(val, 300, 500);
+        else if (strcmp(key, "BATT_ZONE_1") == 0)          BATT_ZONE_1        = clamp(val, 1, 100);
+        else if (strcmp(key, "BATT_ZONE_2") == 0)          BATT_ZONE_2        = clamp(val, 1, 100);
+        else if (strcmp(key, "CPU_EMERG_3") == 0)          CPU_EMERG_3        = clamp(val, 600, 1000);
+        else if (strcmp(key, "CPU_EMERG_2") == 0)          CPU_EMERG_2        = clamp(val, 500, 900);
+        else if (strcmp(key, "CPU_EMERG_1") == 0)          CPU_EMERG_1        = clamp(val, 400, 800);
+        else if (strcmp(key, "CPU_RECOVER_0") == 0)        CPU_RECOVER_0      = clamp(val, 300, 700);
+        else if (strcmp(key, "CPU_RECOVER_1") == 0)        CPU_RECOVER_1      = clamp(val, 400, 800);
+        else if (strcmp(key, "CPU_RECOVER_2") == 0)        CPU_RECOVER_2      = clamp(val, 500, 900);
+        else if (strcmp(key, "EMERG_FORCED_1") == 0)       EMERG_FORCED_1     = clamp(val, 0, 10);
+        else if (strcmp(key, "EMERG_FORCED_2") == 0)       EMERG_FORCED_2     = clamp(val, 0, 10);
+        else if (strcmp(key, "EMERG_FORCED_3") == 0)       EMERG_FORCED_3     = clamp(val, 0, 10);
+        else if (strcmp(key, "COOLDOWN_CYCLES") == 0)      COOLDOWN_CYCLES    = clamp(val, 0, 100);
+        else if (strcmp(key, "DISCONNECT_RESET_SEC") == 0) DISCONNECT_RESET_SEC = clamp(val, 10, 600);
+        else if (strcmp(key, "CPU_FILTER_ALPHA") == 0)     CPU_FILTER_ALPHA   = clamp(val, 1, 100);
+        else if (strcmp(key, "LOG_FILE") == 0) {
+            // 直接从 val_str 读取字符串路径
+            char *v = val_str;
+            while (*v == ' ' || *v == '\t') v++;
+            // 去掉尾部换行/空白
+            char *nl = v + strlen(v) - 1;
+            while (nl > v && (*nl == '\n' || *nl == '\r' || *nl == ' ' || *nl == '\t')) *nl-- = '\0';
+            if (*v) {
+                strncpy(log_file_path, v, sizeof(log_file_path) - 1);
+                log_file_path[sizeof(log_file_path) - 1] = '\0';
+            }
+        }
+        // 不识别的 key 静默跳过
+        else { continue; }
+
+        loaded++;
+    }
+    fclose(f);
+
+    write_log("CONFIG loaded %d params from %s", loaded, path);
+}
+
+/**
+ * 自动检测配置文件路径
+ *
+ * 策略：
+ *   1. 通过 /proc/self/exe 获取 tempctrl 自身路径
+ *   2. 同目录下找 profile.conf（独立 Magisk 模块）
+ *   3. 父目录下找 profile.conf（scene_systemless/others 场景）
+ *
+ * 返回 1=找到，0=未找到
+ */
+static int detect_config_path(void) {
+    char exe_path[512];
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len <= 0) return 0;
+    exe_path[len] = '\0';
+
+    // 获取 exe 所在目录
+    char *last_slash = strrchr(exe_path, '/');
+    if (!last_slash) return 0;
+    *last_slash = '\0';
+
+    // 尝试同目录
+    snprintf(config_path, sizeof(config_path), "%s/profile.conf", exe_path);
+    if (access(config_path, F_OK) == 0) return 1;
+
+    // 尝试父目录（scene_systemless: others/profile.conf → ../profile.conf）
+    char *parent_slash = strrchr(exe_path, '/');
+    if (parent_slash) {
+        *parent_slash = '\0';
+        snprintf(config_path, sizeof(config_path), "%s/profile.conf", exe_path);
+        if (access(config_path, F_OK) == 0) return 1;
+    }
+
+    config_path[0] = '\0';
+    return 0;
+}
 
 // ======================== 全局状态 ========================
 
@@ -152,7 +267,7 @@ static time_t disconnect_time = 0;     // 上次收到 "0" 的时间戳（用于
  * 写入日志到 /cache/tempctrl.log
  */
 static void write_log(const char *fmt, ...) {
-    FILE *f = fopen(LOG_FILE, "a");
+    FILE *f = fopen(log_file_path, "a");
     if (!f) return;
 
     // 时间戳
@@ -463,8 +578,8 @@ static int peek_fifo(void) {
 static void reset_state(void) {
     int batt = read_battery_temp();
     if (batt >= 0) {
-        // 35.0°C → 0 档，每 1°C 一档，范围 0~10
-        int init = (batt - 350) / 10;
+        // 基准温度 → 0 档，每 1°C 一档，范围 0~10
+        int init = (batt - BATT_BASELINE) / 10;
         init = clamp(init, LEVEL_MIN, LEVEL_MAX);
         battery_fan_level = init;
         write_log("RESET battery=%d.%d init_lv=%d",
@@ -575,12 +690,12 @@ static void emergency_intervention(void) {
     int cpu_now = read_cpu_temp_max();
     if (cpu_now < 0) return;   // 读取失败，保持当前等级
 
-    // 一阶低通滤波：weighted = raw×0.25 + weighted×0.75
+    // 一阶低通滤波：weighted = raw×ALPHA% + weighted×(100-ALPHA)%
     if (first_run) {
         cpu_weighted = cpu_now;
         first_run = 0;
     } else {
-        cpu_weighted = (cpu_now * 25 + cpu_weighted * 75) / 100;
+        cpu_weighted = (cpu_now * CPU_FILTER_ALPHA + cpu_weighted * (100 - CPU_FILTER_ALPHA)) / 100;
     }
 
     int t = cpu_weighted;
@@ -604,12 +719,12 @@ static void emergency_intervention(void) {
                   t / 10, t % 10);
 
         // 退出高等级时限制基础档位上限，防止突然降速
-        if (old == 3 && new_level < 3 && battery_fan_level > 9)
-            battery_fan_level = 9;
-        if (old == 2 && new_level < 2 && battery_fan_level > 7)
-            battery_fan_level = 7;
-        if (old == 1 && new_level < 1 && battery_fan_level > 5)
-            battery_fan_level = 5;
+        if (old == 3 && new_level < 3 && battery_fan_level > EMERG_FORCED_3)
+            battery_fan_level = EMERG_FORCED_3;
+        if (old == 2 && new_level < 2 && battery_fan_level > EMERG_FORCED_2)
+            battery_fan_level = EMERG_FORCED_2;
+        if (old == 1 && new_level < 1 && battery_fan_level > EMERG_FORCED_1)
+            battery_fan_level = EMERG_FORCED_1;
 
         cooldown_counter = COOLDOWN_CYCLES;
         emergency_level = new_level;
@@ -638,7 +753,7 @@ static void init_fan_level(void) {
         return;
     }
 
-    int init = (batt - 350) / 10;
+    int init = (batt - BATT_BASELINE) / 10;
     init = clamp(init, LEVEL_MIN, LEVEL_MAX);
     battery_fan_level = init;
     prev_batt_temp = batt;    // 记录初始温度用于变化检测
@@ -656,9 +771,21 @@ static void handle_signal(int sig) {
 
 /**
  * 单次控制循环
- * 读温度 → 决策 → 下发（去重）
+ * 检查配置 → 读温度 → 决策 → 下发（去重）
  */
 static void main_loop(void) {
+    // 0. 检查配置文件是否更新（热重载）
+    if (config_path[0] != '\0') {
+        struct stat st;
+        if (stat(config_path, &st) == 0) {
+            if (st.st_mtime != config_mtime) {
+                load_config(config_path);
+                config_mtime = st.st_mtime;
+                write_log("CONFIG hot-reloaded (mtime changed)");
+            }
+        }
+    }
+
     // 1. CPU 紧急干预（更新 cpu_weighted 和 emergency_level）
     emergency_intervention();
 
@@ -679,6 +806,24 @@ static void main_loop(void) {
 int main(int argc, char *argv[]) {
     signal(SIGTERM, handle_signal);
     signal(SIGINT,  handle_signal);
+
+    // --- 加载配置（优先 --config 参数，否则自动检测）---
+    if (argc >= 3 && strcmp(argv[1], "--config") == 0) {
+        strncpy(config_path, argv[2], sizeof(config_path) - 1);
+        config_path[sizeof(config_path) - 1] = '\0';
+        load_config(config_path);
+    } else if (detect_config_path()) {
+        load_config(config_path);
+    } else {
+        // 没找到配置文件，全用默认值
+        config_path[0] = '\0';
+    }
+
+    // 如果加载了配置，记录当前 mtime
+    if (config_path[0] != '\0') {
+        struct stat st;
+        if (stat(config_path, &st) == 0) config_mtime = st.st_mtime;
+    }
 
     // --- 初始化 ---
     init_fifo();

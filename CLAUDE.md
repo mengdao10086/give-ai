@@ -6,7 +6,7 @@
 ## 工作目录
 - 根目录：`D:\下载\Claude Code\飞智b6x增强计划`
 - LSPosed 模块项目：`./lsp模块（apk修复+温控接口）/`（Android Studio 项目）
-- 智能温控脚本：`./智能温控脚本/`（C 守护程序）
+- 智能温控：`./magisk模块（智能温控）/`（C 守护程序 + Magisk 模块框架）
 - 所有操作在 **Bash 环境** 下执行
 - **分支**：所有开发直接提交到 **`main`** 分支（默认分支），不使用 master
 
@@ -24,8 +24,9 @@
 | `参考资料/反编译及分析结果/bug_analysis_report.md` | 原始 Bug 分析报告 |
 | `修复历程/完整修复历程.md` | 4 层 Bug 的完整修复记录 |
 | `修复历程/修复过程1.1/` | smali 工具链 |
-| `智能温控脚本/tempctrl.c` | 智能温控 C 守护程序 |
-| `智能温控脚本/逻辑说明.md` | 智能温控设计文档 |
+| `magisk模块（智能温控）/tempctrl.c` | 智能温控 C 守护程序 |
+| `magisk模块（智能温控）/逻辑说明.md` | 智能温控设计文档 |
+| `magisk模块（智能温控）/magisk模块框架/` | Magisk 模块框架（module.prop/service.sh/customize.sh/profile.conf） |
 
 ## 修复成果
 | 问题 | 修复 | 状态 |
