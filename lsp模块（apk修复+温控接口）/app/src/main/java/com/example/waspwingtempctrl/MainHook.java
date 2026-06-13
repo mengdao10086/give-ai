@@ -3,6 +3,10 @@ package com.example.waspwingtempctrl;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCharacteristic;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -42,6 +46,51 @@ public class MainHook implements IXposedHookLoadPackage {
             });
         } catch (Exception e) {
             // FIFO 可能还不存在（守护进程还未启动），忽略
+        }
+    }
+
+    // ========== 智能温控广播接收器（v2.0） ==========
+    // 接收 tempctrl 发送的 am broadcast，调用 setRunMode 控制散热器
+
+    private static void registerTemperatureReceiver(Context ctx) {
+        try {
+            IntentFilter filter = new IntentFilter("com.flydigi.SET_TEMPERATURE");
+            ctx.registerReceiver(new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    try {
+                        int mode        = intent.getIntExtra("mode", 0);
+                        int temperature = intent.getIntExtra("temperature", 20);
+                        int windOC      = intent.getIntExtra("windOC", 0);
+                        int coldOC      = intent.getIntExtra("coldOC", 0);
+                        int windLevel   = intent.getIntExtra("windLevel", 0);
+                        int modeCustom  = intent.getIntExtra("modeCustom", 0);
+                        int extra       = intent.getIntExtra("extra", 0);
+
+                        XposedBridge.log(TAG + " 收到广播 mode=" + mode
+                                + " temp=" + temperature + " windOC=" + windOC
+                                + " coldOC=" + coldOC + " windLv=" + windLevel);
+
+                        // 通过 WaspWingManager 单例调用 setRunMode
+                        try {
+                            Class<?> mgr = context.getClassLoader()
+                                    .loadClass("com.flydigi.sdk.waspwing.WaspWingManager");
+                            Object inst = XposedHelpers.callStaticMethod(mgr, "getInstance");
+                            XposedHelpers.callMethod(inst, "setRunMode",
+                                    mode, temperature, windOC, coldOC,
+                                    windLevel, modeCustom, extra);
+                            XposedBridge.log(TAG + " setRunMode 成功");
+                        } catch (Exception e2) {
+                            XposedBridge.log(TAG + " setRunMode 调用失败: " + e2.getMessage());
+                        }
+                    } catch (Exception e) {
+                        XposedBridge.log(TAG + " 广播处理异常: " + e.getMessage());
+                    }
+                }
+            }, filter, Context.RECEIVER_EXPORTED);
+            XposedBridge.log(TAG + " 已注册 SET_TEMPERATURE 广播接收器 (RECEIVER_EXPORTED)");
+        } catch (Exception e) {
+            XposedBridge.log(TAG + " 注册广播接收器失败: " + e.getMessage());
         }
     }
 
@@ -211,24 +260,13 @@ public class MainHook implements IXposedHookLoadPackage {
                             BluetoothGatt gatt = (BluetoothGatt) param.thisObject;
                             String devName = gatt.getDevice() != null
                                     ? gatt.getDevice().getName() : "null";
-                            StringBuilder sb = new StringBuilder();
-                            for (StackTraceElement el : Thread.currentThread().getStackTrace()) {
-                                if (sb.length() > 400) break;
-                                String s = el.toString();
-                                if (s.contains("flydigi") || s.contains("example")
-                                        || s.contains("waspwing")) {
-                                    sb.append("\n  at ").append(s);
-                                }
-                            }
-                            XposedBridge.log(TAG + " [诊断] BluetoothGatt.discoverServices() 被调用"
-                                    + " device=" + devName
-                                    + " stack=" + sb.toString());
+                            XposedBridge.log(TAG + " [诊断] discoverServices 被调用"
+                                    + " device=" + devName);
                         }
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             boolean result = (Boolean) param.getResult();
-                            XposedBridge.log(TAG + " [诊断] BluetoothGatt.discoverServices() 返回 "
-                                    + result);
+                            XposedBridge.log(TAG + " [诊断] discoverServices 返回 " + result);
                         }
                     });
             XposedBridge.log(TAG + " 已钩住 BluetoothGatt.discoverServices");
@@ -241,27 +279,16 @@ public class MainHook implements IXposedHookLoadPackage {
                             Object ctrl = param.thisObject;
                             Object dev = XposedHelpers.callMethod(ctrl, "getMBluetoothDevice");
                             int state = XposedHelpers.getIntField(ctrl, "mDataConnectState");
-                            // 打印调用栈定位谁调了 connect()
-                            StringBuilder sb = new StringBuilder();
-                            for (StackTraceElement el : Thread.currentThread().getStackTrace()) {
-                                if (sb.length() > 500) break;
-                                String s = el.toString();
-                                if (s.contains("flydigi") || s.contains("example")
-                                        || s.contains("waspwing")) {
-                                    sb.append("\n  at ").append(s);
-                                }
-                            }
-                            XposedBridge.log(TAG + " [诊断] LeDataInteractionController.connect() 进入"
+                            XposedBridge.log(TAG + " [诊断] connect() 进入"
                                     + " device=" + (dev != null ? dev.toString() : "null")
-                                    + " mDataConnectState=" + state
-                                    + " stack=" + sb.toString());
+                                    + " state=" + state);
                         }
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             Object ctrl = param.thisObject;
                             Object gatt = XposedHelpers.getObjectField(ctrl, "mBluetoothGatt");
-                            XposedBridge.log(TAG + " [诊断] LeDataInteractionController.connect() 退出"
-                                    + " mBluetoothGatt=" + (gatt != null ? "有值" : "null"));
+                            XposedBridge.log(TAG + " [诊断] connect() 退出"
+                                    + " gatt=" + (gatt != null ? "有值" : "null"));
                         }
                     });
             XposedBridge.log(TAG + " 已钩住 LeDataInteractionController.connect");
@@ -362,6 +389,20 @@ public class MainHook implements IXposedHookLoadPackage {
             XposedBridge.log(TAG + " 已钩住 B6ExperimentalActivity.onResume → FIFO");
         } catch (Exception e) {
             XposedBridge.log(TAG + " 钩 B6ExperimentalActivity 失败: " + e.getMessage());
+        }
+
+        // ========== 广播接收器注册（Application.onCreate 时机） ==========
+        try {
+            Class<?> appClass = lpparam.classLoader.loadClass("android.app.Application");
+            XposedHelpers.findAndHookMethod(appClass, "onCreate", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    Context ctx = (Context) param.thisObject;
+                    registerTemperatureReceiver(ctx);
+                }
+            });
+        } catch (Exception e) {
+            XposedBridge.log(TAG + " 钩 Application.onCreate 失败: " + e.getMessage());
         }
     }
 }
