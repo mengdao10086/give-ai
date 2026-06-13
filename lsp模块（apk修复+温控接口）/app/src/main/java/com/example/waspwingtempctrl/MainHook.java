@@ -31,6 +31,8 @@ public class MainHook implements IXposedHookLoadPackage {
     private static final String TARGET_PACKAGE = "com.flydigi.waspwing.experimental";
     private static final String TAG = "[WaspWingTempCtrl]";
     private static Object capturedWaspWingMgr = null;  // 构造函数钩子捕获的实例
+    private static int lastSetMode = 0;     // 上次 setRunMode 的 mode（用于 UI 闪烁修复）
+    private static int lastSetColdOC = 0;   // 上次固定功率的 coldOC（用于 UI 闪烁修复）
 
     // ========== 智能温控广播接收器（v2.0） ==========
     // 接收 tempctrl 发送的 am broadcast，调用 setRunMode 控制散热器
@@ -77,6 +79,10 @@ public class MainHook implements IXposedHookLoadPackage {
                             }
 
                             if (inst != null) {
+                                // 记录本次 mode 值，用于 onDeviceInfoUpdate 中修正 UI 闪烁
+                                lastSetMode = mode;
+                                lastSetColdOC = coldOC;
+
                                 XposedHelpers.callMethod(inst, "setRunMode",
                                         mode, temperature, windOC, coldOC,
                                         windLevel, modeCustom, extra);
@@ -344,6 +350,14 @@ public class MainHook implements IXposedHookLoadPackage {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
                             Object info = param.args[0];
+
+                            // 修正 experimentalRunModeValue，阻止 App 原生逻辑触发 UI 闪烁
+                            // 智能模式 mode=0 时设 0，固定功率 mode=1 时设 coldOC
+                            try {
+                                XposedHelpers.setIntField(info, "experimentalRunModeValue",
+                                        lastSetMode == 1 ? lastSetColdOC : 0);
+                            } catch (Throwable t) { /* 字段可能不存在 */ }
+
                             Boolean connected = (Boolean) XposedHelpers.callMethod(info, "isConnected");
                             Integer wind = (Integer) XposedHelpers.callMethod(info, "getRealWindLevel");
                             XposedBridge.log(TAG + " [诊断] SDK.onDeviceInfoUpdate"
