@@ -71,20 +71,40 @@ public class MainHook implements IXposedHookLoadPackage {
                                 + " temp=" + temperature + " windOC=" + windOC
                                 + " coldOC=" + coldOC + " windLv=" + windLevel);
 
-                        // 通过 WaspWingManager 单例调用 setRunMode
+                        // 通过 WaspWingManager 调用 setRunMode（尝试多种单例获取方式）
                         try {
-                            Class<?> mgr = context.getClassLoader()
+                            Class<?> mgrCls = context.getClassLoader()
                                     .loadClass("com.flydigi.sdk.waspwing.WaspWingManager");
-                            Object inst = XposedHelpers.callStaticMethod(mgr, "getInstance");
-                            XposedHelpers.callMethod(inst, "setRunMode",
-                                    mode, temperature, windOC, coldOC,
-                                    windLevel, modeCustom, extra);
-                            XposedBridge.log(TAG + " setRunMode 成功");
-                        } catch (Exception e2) {
-                            XposedBridge.log(TAG + " setRunMode 调用失败: " + e2.getMessage());
+
+                            // Try multiple singleton access patterns
+                            Object inst = null;
+                            String[] methods = {"getInstance", "get", "getDefault"};
+                            for (String m : methods) {
+                                try {
+                                    inst = XposedHelpers.callStaticMethod(mgrCls, m);
+                                    if (inst != null) break;
+                                } catch (Throwable t) { /* try next */ }
+                            }
+                            // Kotlin object pattern → INSTANCE field
+                            if (inst == null) {
+                                try {
+                                    inst = XposedHelpers.getObjectField(mgrCls, "INSTANCE");
+                                } catch (Throwable t) { /* ok */ }
+                            }
+
+                            if (inst != null) {
+                                XposedHelpers.callMethod(inst, "setRunMode",
+                                        mode, temperature, windOC, coldOC,
+                                        windLevel, modeCustom, extra);
+                                XposedBridge.log(TAG + " setRunMode 成功");
+                            } else {
+                                XposedBridge.log(TAG + " setRunMode 失败: 找不到 WaspWingManager 实例");
+                            }
+                        } catch (Throwable t) {
+                            XposedBridge.log(TAG + " setRunMode 异常: " + t.getMessage());
                         }
-                    } catch (Exception e) {
-                        XposedBridge.log(TAG + " 广播处理异常: " + e.getMessage());
+                    } catch (Throwable t) {
+                        XposedBridge.log(TAG + " 广播处理崩溃: " + t);
                     }
                 }
             }, filter, Context.RECEIVER_EXPORTED);
