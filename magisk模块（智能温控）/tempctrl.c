@@ -620,14 +620,6 @@ static void emergency_intervention(void) {
                   cpu_now / 10, cpu_now % 10,
                   t / 10, t % 10);
 
-        // 退出高等级时限制基础档位上限，防止突然降速
-        if (old == 3 && new_level < 3 && battery_fan_level > EMERG_FORCED_3)
-            battery_fan_level = EMERG_FORCED_3;
-        if (old == 2 && new_level < 2 && battery_fan_level > EMERG_FORCED_2)
-            battery_fan_level = EMERG_FORCED_2;
-        if (old == 1 && new_level < 1 && battery_fan_level > EMERG_FORCED_1)
-            battery_fan_level = EMERG_FORCED_1;
-
         cooldown_counter = COOLDOWN_CYCLES;
         emergency_level = new_level;
     }
@@ -675,6 +667,9 @@ static void handle_signal(int sig) {
  * 单次控制循环
  * 检查配置 → 读温度 → 决策 → 下发（去重）
  */
+// 记录上一轮紧急等级（用于退出限制判断）
+static int prev_emerg_level = 0;
+
 static void main_loop(void) {
     // 0. 检查配置文件是否更新（热重载）
     if (config_path[0] != '\0') {
@@ -689,6 +684,7 @@ static void main_loop(void) {
     }
 
     // 1. CPU 紧急干预（更新 cpu_weighted 和 emergency_level）
+    prev_emerg_level = emergency_level;
     emergency_intervention();
 
     // 2. 电池温度控制（内部处理冷却期）
@@ -705,6 +701,15 @@ static void main_loop(void) {
     // 5. 同步电池档位 = 实际下发的档位
     // 这样电池控制始终以上次实际使用的档位为基础进行升降
     battery_fan_level = final_level;
+
+    // 6. 退出紧急时限制电池档位上限（在同步之后，保证一定会执行）
+    // 防止紧急撤了之后档位过高导致过度散热
+    if (prev_emerg_level >= 3 && emergency_level < 3 && battery_fan_level > EMERG_FORCED_3)
+        battery_fan_level = EMERG_FORCED_3;
+    if (prev_emerg_level >= 2 && emergency_level < 2 && battery_fan_level > EMERG_FORCED_2)
+        battery_fan_level = EMERG_FORCED_2;
+    if (prev_emerg_level >= 1 && emergency_level < 1 && battery_fan_level > EMERG_FORCED_1)
+        battery_fan_level = EMERG_FORCED_1;
 }
 
 // ======================== 程序入口 ========================
