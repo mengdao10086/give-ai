@@ -9,7 +9,7 @@
 | 版本 | 功能 | 状态 |
 |------|------|------|
 | **v1.0** | 修复 Android 16 (API 36) 上蓝牙扫描生命周期崩溃导致无法连接散热器的问题 | ✅ 已发布 |
-| **v2.0** | 智能温控后台守护程序的广播接口 + FIFO 唤醒机制 | ⚙️ 开发中 |
+| **v2.0** | 智能温控后台守护程序的广播接口 + pgrep 进程检测 | ⚙️ 开发中 |
 
 ---
 
@@ -32,20 +32,19 @@
  ┌─ 手机 ──────────────────────────────────────────────────┐
  │                                                         │
  │  飞智 App 进程                        Root 进程          │
- │  ┌──────────────────────┐            ┌───────────────┐  │
- │  │ LSPosed 模块          │   FIFO    │ tempctrl      │  │
- │  │                      │◄── '1'/'0'│ C 守护程序     │  │
- │  │ onResume → BLE 已连  │──'1'──────│ 阻塞等待       │  │
- │  │   → echo "1" > fifo  │           │ (CPU 0%)      │  │
- │  │                      │           │               │  │
- │  │ BLE 断联             │──'0'──────│ 收到 '1' →    │  │
- │  │   → echo "0" > fifo  │           │ 读温度→决策→  │  │
- │  │                      │           │ 下发           │  │
- │  │ ←── am broadcast ────│──指令──────│ 每 5 秒循环   │  │
- │  │       mode/temp/     │           │   │            │  │
- │  │       windOC/coldOC  │           │   └─ peek FIFO │  │
- │  │          ↓           │           │    '0' → 阻塞  │  │
- │  │  WaspWingManager     │           └───────────────┘  │
+ │  ┌──────────────────────┐     pgrep    ┌───────────────┐  │
+ │  │ LSPosed 模块          │ ◄────────── │ tempctrl      │  │
+ │  │                      │  进程存活检测 │ C 守护程序     │  │
+ │  │ BLE 连接/断联        │             │ 每 5 秒：     │  │
+ │  │ (tempctrl 自行检测   │             │ 读温度→决策→  │  │
+ │  │  进程存活)           │             │ 下发指令      │  │
+ │  │                      │             │               │  │
+ │  │ ←── am broadcast ────│──指令───────│               │  │
+ │  │       mode/temp/     │             │               │  │
+ │  │       windOC/coldOC  │             └───────────────┘  │
+ │  │          ↓                                          │
+ │  │  WaspWingManager                                     │
+ │  │  .setRunMode(7 params)                              │
  │  │  .setRunMode(7 params)                              │
  │  │          ↓                                          │
  │  │     BLE 指令 → 散热器                                │
@@ -53,28 +52,26 @@
  └────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 FIFO 通信协议
+### 2.2 进程检测与控制通信
 
-模块与 C 守护进程之间通过命名管道（FIFO）通信：
+C 守护程序通过 `pgrep` 每 5 秒检测 App 进程存活，不再使用命名管道（FIFO）：
 
 ```
-FIFO: /data/local/tmp/b6x_fifo (权限 0666)
+tempctrl 侧（C 守护程序）：
+  每轮 main_loop() 末尾执行 pgrep -f com.flydigi.waspwing.experimental
+  ├─ 进程存在 → 正常执行控制
+  └─ 进程消失 → 记录失联时间，等待复活
+      └─ 复活时检查失联时间
+          ├─ ≥60 秒 → reset_state() 重置所有状态
+          └─ <60 秒 → 正常恢复，强制重发当前档位
 
-写入规则（由 LSPosed 模块执行）：
-  '1' = BLE 已连接，请求开始智能温控
-  '0' = BLE 已断开，请求停止控制
-
-触发时机：
-  - onResume + BLE 已连接 → '1'       （兜底唤醒）
-  - AbstractBluetoothController       （BLE 连接成功）
-    .onDeviceConnected → '1'
-  - BluetoothGatt.disconnect() → '0'  （BLE 断联）
-  - onPause：不写入                    （App 切后台不影响控制）
+模块侧（不再主动写入 FIFO）：
+  模块只负责接收 am broadcast 并调用 setRunMode
+  BLE 连接/断联由 tempctrl 自行检测
 ```
 
-断联超时重置：
-- 收到 `'0'` 后记录时间戳
-- 收到 `'1'` 时检查间隔：≥60 秒 → 重置所有状态（视为新开机）；<60 秒 → 正常恢复
+**FIFO 废弃原因**：KernelSU 下 App 进程无权限写 `/data/local/tmp/`，
+`Runtime.exec("su", "-c", "echo > fifo")` 在 KSU 中不可靠。
 
 ### 2.3 档位定义
 
@@ -120,16 +117,6 @@ export ANDROID_HOME=/path/to/Android/Sdk
 
 **GitHub Actions：** 推送 tag（`v*`）或手动触发 workflow_dispatch 即可自动编译。
 
-### 3.2 编译 C 守护程序
-
-在 Termux 中编译（ARM64 Android）：
-```bash
-pkg install clang python3
-cd magisk模块（智能温控）
-clang -static -O2 -o tempctrl tempctrl.c
-python3 patch_tls.py tempctrl
-```
-
 ---
 
 ## 四、安装与使用
@@ -166,7 +153,7 @@ app/
 ├── src/main/
 │   ├── AndroidManifest.xml       ← 模块声明 + Xposed 元数据
 │   ├── assets/xposed_init        ← Xposed 入口
-│   └── java/.../MainHook.java    ← 核心注入代码（修复 + FIFO + 广播接收）
+│   └── java/.../MainHook.java    ← 核心注入代码（修复 + 广播接收处理）
 ├── build.gradle.kts
 ├── settings.gradle.kts
 └── gradle/
@@ -204,6 +191,5 @@ A: 检查 Magisk 模块的 `service.sh` 是否正确，查看 `/cache/tempctrl.l
 | 风险 | 说明 |
 |------|------|
 | `RECEIVER_EXPORTED` 权限 | `am broadcast` 从系统进程发广播，模块需 `RECEIVER_EXPORTED` 才能收到（Android 14+） |
-| BLE 重连时序 | `BluetoothGatt.disconnect()` 钩子可能被多次触发，注意 FIFO 重复写入 |
-| `convertFromDevice()` 禁用 | 不要调用该方法——它创建全默认值 WaspWingInfo（`experimentalRunModeValue=null`），触发 `onDeviceInfoUpdate` → `setExperimentalRunMode` 状态循环，导致 UI 闪烁 |
-| FIFO 竞态 | 模块侧 `echo > fifo` 如果 daemon 还没 `open()` FIFO，写操作会阻塞 |
+| BLE 重连时序 | `BluetoothGatt.disconnect()` 钩子可能被多次触发（已移除 FIFO，不影响） |
+| `convertFromDevice()` 禁用 | 不要调用该方法——它创建全默认值 WaspWingInfo，触发循环导致 UI 闪烁 |

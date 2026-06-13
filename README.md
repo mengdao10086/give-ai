@@ -11,14 +11,14 @@
 | 组件 | 路径 | 说明 | 状态 |
 |------|------|------|------|
 | **LSPosed 模块** | [lsp模块（apk修复+温控接口）/](lsp模块（apk修复+温控接口）/README.md) | 修复 Android 16 BLE Bug + 提供智能温控广播接口 | ✅ v1.0 已发布 |
-| **C 守护程序** | [magisk模块（智能温控）/](magisk模块（智能温控）/tempctrl.c) | FIFO 事件驱动的智能温控算法 | ⚙️ v2.0 开发中 |
+| **C 守护程序** | [magisk模块（智能温控）/](magisk模块（智能温控）/tempctrl.c) | pgrep 进程检测 + am broadcast 控制 | ⚙️ v2.0 开发中 |
 
 ### LSPosed 模块功能
 
 - 修复 Android 16 (API 36) 上 `checkBluetoothPermission()` 返回 false 导致 BLE 无法连接的问题
 - 修复连接后扫描不停、ViewModel LiveData 不更新等 4 层 Bug
 - 提供 `com.flydigi.SET_TEMPERATURE` 广播接收器，支持 7 参数完整控制
-- 通过 FIFO 与 C 守护进程通信，实现零延迟唤醒
+- tempctrl 通过 `pgrep` 检测进程存活，自动恢复控制
 
 ### C 智能温控守护程序
 
@@ -101,11 +101,11 @@ python3 patch_tls.py tempctrl   # 修复 PT_TLS 对齐
 | 任务 | 优先级 | 说明 |
 |------|--------|------|
 | 本地编译测试 | 🔴 高 | 在手机上用 Termux 编译 `tempctrl.c`，推送到手机测试 |
-| FIFO 通信验证 | 🔴 高 | 手动 `echo "1" > /data/local/tmp/b6x_fifo` 看 daemon 是否唤醒 |
+| 应用进程检测与恢复 | 🟡 中 | tempctrl 每 5 秒通过 pgrep 检测 App 进程，失联时等待恢复并强制重发 |
 | am broadcast 参数验证 | 🟡 中 | 确认 `windOC`/`coldOC`/`windLevel` 参数在真机上的效果 |
 | 档位映射验证 | 🟡 中 | 各档位风扇转速和制冷片强度是否与表格预期一致 |
 | 断联超时重置测试 | 🟡 中 | BLE 断开 >60 秒重连后，daemon 是否执行 `reset_state()` |
-| 睡眠/唤醒延迟测试 | 🟢 低 | FIFO 阻塞 read() 的唤醒延迟是否 <1ms |
+| 断联超时重置测试 | 🟡 中 | BLE 断开 >60 秒重连后，daemon 是否执行 `reset_state()` |
 | Magisk 模块封装 | 🟢 低 | 将 `tempctrl` 二进制封装为 Magisk 模块，含 `service.sh` |
 
 ### CI 可改进
@@ -140,6 +140,5 @@ python3 patch_tls.py tempctrl   # 修复 PT_TLS 对齐
 |------|------|
 | `RECEIVER_EXPORTED` 权限 | `am broadcast` 从系统进程发广播，模块需 `RECEIVER_EXPORTED` 才能收到（Android 14+） |
 | 温度传感器路径 | `thermal_zone30~40` 是 K60 机型路径，其他机型可能不同 |
-| BLE 重连时序 | `BluetoothGatt.disconnect()` 钩子可能被多次触发，注意 FIFO 重复写入 |
-| FIFO 竞态 | 模块侧写 FIFO 如果 daemon 还没 `open()`，写操作会阻塞 |
+| BLE 重连时序 | `BluetoothGatt.disconnect()` 钩子可能被多次触发（已移除 FIFO，不影响） |
 | NDK 编译 | CI 中不要依赖 `$ANDROID_NDK_HOME`，改用固定路径下载 NDK r27c |
