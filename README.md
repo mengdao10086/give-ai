@@ -25,7 +25,9 @@
 - 读取电池温度（sysfs）和 CPU 温度，综合决策散热档位
 - 11 级档位（0~10），使用查表法（实测数据）
 - CPU 紧急干预（65/75/85°C 三级，带低通滤波）
-- 电池温度调档（34.5/35°C 迟滞控制）
+- 电池温度调档（基准 35°C，三级区间：≤0.7°C 死区/0.7~2°C ±1档/>2°C ±2档）
+- 温度未变化时跳过升降档，防止重复调整
+- FIFO 事件驱动，阻塞等待时 CPU 占用 0%
 - 指令去重，避免散热器频繁切换
 
 ---
@@ -66,3 +68,65 @@ APK 和 C 守护程序均由 GitHub Actions 自动构建：
 - 推送 `v*` 标签自动触发
 - 也可在 Actions 页面手动 `workflow_dispatch` 触发
 - 构建产物在对应运行记录的 Artifacts 中下载
+
+> **CI 注意事项**：NDK (~700MB) 已配置 `actions/cache` 缓存，首次运行后不再重复下载。
+> 使用 `workflow_dispatch` 测试，不要推送 release tag 直到测试通过。
+
+### Termux 编译 C 守护程序
+
+```bash
+pkg install clang python3
+clang -static -O2 -o tempctrl tempctrl.c
+python3 patch_tls.py tempctrl   # 修复 PT_TLS 对齐
+```
+
+### CI 编译（GitHub Actions）
+
+- 使用 NDK r27c，下载到 `/opt/ndk` 固定路径
+- 编译命令：`aarch64-linux-android21-clang -static -O2`
+- 不要依赖 `$ANDROID_NDK_HOME`（有时未设置）
+- NDK 已配置 `actions/cache` 缓存，首次后不再重复下载
+
+---
+
+## 待办 / 开发中
+
+### C 守护程序待测试
+
+| 任务 | 优先级 | 说明 |
+|------|--------|------|
+| 本地编译测试 | 🔴 高 | 在手机上用 Termux 编译 `tempctrl.c`，推送到手机测试 |
+| FIFO 通信验证 | 🔴 高 | 手动 `echo "1" > /data/local/tmp/b6x_fifo` 看 daemon 是否唤醒 |
+| am broadcast 参数验证 | 🟡 中 | 确认 `windOC`/`coldOC`/`windLevel` 参数在真机上的效果 |
+| 档位映射验证 | 🟡 中 | 各档位风扇转速和制冷片强度是否与表格预期一致 |
+| 断联超时重置测试 | 🟡 中 | BLE 断开 >60 秒重连后，daemon 是否执行 `reset_state()` |
+| 睡眠/唤醒延迟测试 | 🟢 低 | FIFO 阻塞 read() 的唤醒延迟是否 <1ms |
+| Magisk 模块封装 | 🟢 低 | 将 `tempctrl` 二进制封装为 Magisk 模块，含 `service.sh` |
+
+### CI 可改进
+
+- NDK 缓存：每次 CI 下载 NDK ~700MB，可改为缓存加速
+- 自动发布：等 v2.0 稳定后可开启 tag 自动发布 APK + C 二进制
+
+---
+
+## 本地开发环境
+
+| 项目 | 说明 |
+|------|------|
+| 代码路径 | `D:\下载\Claude Code\飞智b6x增强计划\` |
+| Git 远程 | `https://github.com/mengdao10086/b6x-Enhancement-Plan-ai.git` |
+| 默认分支 | `main` |
+| 模块编译 | Android Studio 打开 `lsp模块（apk修复+温控接口）/` → Build APK |
+| C 编译 | Termux: `clang -static -O2 -o tempctrl tempctrl.c && python3 patch_tls.py tempctrl` |
+| 模块安装 | LSPosed 勾选模块 + 作用域 `com.flydigi.waspwing.experimental` → 强制停止 App |
+
+## 已知风险
+
+| 风险 | 说明 |
+|------|------|
+| `RECEIVER_EXPORTED` 权限 | `am broadcast` 从系统进程发广播，模块需 `RECEIVER_EXPORTED` 才能收到（Android 14+） |
+| 温度传感器路径 | `thermal_zone30~40` 是 K60 机型路径，其他机型可能不同 |
+| BLE 重连时序 | `BluetoothGatt.disconnect()` 钩子可能被多次触发，注意 FIFO 重复写入 |
+| FIFO 竞态 | 模块侧写 FIFO 如果 daemon 还没 `open()`，写操作会阻塞 |
+| NDK 编译 | CI 中不要依赖 `$ANDROID_NDK_HOME`，改用固定路径下载 NDK r27c |

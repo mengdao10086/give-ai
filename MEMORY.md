@@ -1,10 +1,9 @@
 # 项目记忆索引
 
-- [完整任务交接](交接.md) — 两段对话的完整任务交接文档
 - [完整修复历程](修复历程/完整修复历程.md) — 全部 4 层 Bug 修复全记录
 - [LSPosed 模块源码](lsp模块（apk修复+温控接口）/app/src/main/java/com/example/waspwingtempctrl/MainHook.java) — 最终 MainHook.java（含 FIFO 唤醒、BLE 断联检测）
 - [智能温控 C 守护程序](智能温控脚本/tempctrl.c) — 智能温控算法源码（FIFO 事件驱动，查表法档位，断联超时重置）
-- [智能温控伪代码](智能温控脚本/tempctrl_pseudo.c) — 智能温控详细设计文档
+- [智能温控逻辑说明](智能温控脚本/逻辑说明.md) — 智能温控设计文档（运行逻辑、策略细节、注意事项）
 - [反编译分析](参考资料/反编译及分析结果/bug_analysis_report.md) — 原始 Bug 分析报告
 - [第一阶段修复](修复历程/完整修复历程.md#2-第一阶段apk-直接修改尝试失败) — smali 修改尝试记录（合入完整版第 2 章）
 

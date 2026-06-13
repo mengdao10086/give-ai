@@ -90,11 +90,10 @@ static const int COLD_INTENSITY_TABLE[11] = {
 #define COLD_MIN             1
 #define COLD_MAX           194     // 最大有效值（以上需超频模式，本场景不用）
 
-// --- 电池温度阈值（0.1°C）---
-#define BATT_UP_2          350     // ≥35.0°C → +2 档
-#define BATT_UP_1          345     // ≥34.5°C → +1 档
-#define BATT_DOWN_1        335     // ≤33.5°C → -1 档
-#define BATT_DOWN_2        330     // ≤33.0°C → -2 档
+// --- 电池温度控制（0.1°C）---
+#define BATT_BASELINE      350     // 基准温度 35.0°C
+#define BATT_ZONE_1          7     // ±0.7°C → 不变（死区）
+#define BATT_ZONE_2         20     // ±2.0°C → 1 档（超过→2档）
 
 // --- CPU 紧急干预阈值（0.1°C）---
 #define CPU_EMERG_3        850     // >85.0°C → 等级 3
@@ -130,6 +129,7 @@ static int emergency_level = 0;        // CPU 紧急等级 0~3
 static int forced_min_level = 0;       // 紧急强制最低档位
 static int cpu_weighted = 250;         // 加权 CPU 温度，初始 25.0°C
 static int cooldown_counter = 0;       // 冷却期剩余周期数
+static int prev_batt_temp = -1;       // 上次调整时的电池温度（变化检测）
 static int first_run = 1;             // 首次运行（滤波初始化）
 static volatile int running = 1;       // 信号控制标记
 
@@ -479,6 +479,7 @@ static void reset_state(void) {
     forced_min_level = 0;
     cpu_weighted = 250;      // 25.0°C
     first_run = 1;
+    prev_batt_temp = -1;     // 重置温度变化检测
 
     // 清发送缓存，确保重置参数一定下发
     last_sent_valid = 0;
@@ -498,17 +499,17 @@ static void reset_state(void) {
  * 根据电池温度调整基础档位
  * 每 5 秒调用一次
  *
- * 调整策略：
- *   ≥35.0°C → +2 档
- *   ≥34.5°C → +1 档
- *   ≤33.0°C → -2 档
- *   ≤33.5°C → -1 档
- *   每次调整后冷却 20 秒
+ * 调整策略（基准温度 35.0°C）：
+ *   偏差 ≤0.7°C  → 不变（死区）
+ *   偏差 0.7~2°C → ±1 档
+ *   偏差 >2°C    → ±2 档
+ *
+ * 温度读数未变化时跳过升降档（冷却期倒计时正常进行）。
  */
 static void battery_control(void) {
+    // 冷却期倒计时（始终进行，不影响紧急等级等其他逻辑）
     if (cooldown_counter > 0) {
         cooldown_counter--;
-        return;
     }
 
     int batt = read_battery_temp();
@@ -517,20 +518,41 @@ static void battery_control(void) {
         return;
     }
 
+    // 温度值与上次调整时相同 → 跳过升降档
+    if (batt == prev_batt_temp) {
+        return;
+    }
+
+    // 冷却期内不执行升降档
+    if (cooldown_counter > 0) return;
+
+    // 根据与基准温度的偏差计算档位调整量
+    int diff = batt - BATT_BASELINE;
     int delta = 0;
-    if      (batt >= BATT_UP_2)   delta = 2;
-    else if (batt >= BATT_UP_1)   delta = 1;
-    else if (batt <= BATT_DOWN_2) delta = -2;
-    else if (batt <= BATT_DOWN_1) delta = -1;
+
+    if (diff > 0) {
+        if      (diff <= BATT_ZONE_1) delta = 0;   // ≤0.7°C 死区
+        else if (diff <= BATT_ZONE_2) delta = 1;   // 0.7~2°C → +1
+        else                          delta = 2;   // >2°C   → +2
+    } else if (diff < 0) {
+        int abs_diff = -diff;
+        if      (abs_diff <= BATT_ZONE_1) delta = 0;   // ≤0.7°C 死区
+        else if (abs_diff <= BATT_ZONE_2) delta = -1;  // 0.7~2°C → -1
+        else                              delta = -2;  // >2°C   → -2
+    }
 
     if (delta != 0) {
         int old = battery_fan_level;
+        prev_batt_temp = batt;
         battery_fan_level += delta;
         battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
         cooldown_counter = COOLDOWN_CYCLES;
 
-        write_log("BATT batt=%d.%d lv %+d (%d→%d)",
-                  batt / 10, batt % 10, delta, old, battery_fan_level);
+        write_log("BATT batt=%d.%d diff=%+d delta=%+d lv %d→%d",
+                  batt / 10, batt % 10, diff, delta, old, battery_fan_level);
+    } else {
+        // 死区内或恰好等于基准 → 记录温度但不下调
+        prev_batt_temp = batt;
     }
 }
 
@@ -619,6 +641,7 @@ static void init_fan_level(void) {
     int init = (batt - 350) / 10;
     init = clamp(init, LEVEL_MIN, LEVEL_MAX);
     battery_fan_level = init;
+    prev_batt_temp = batt;    // 记录初始温度用于变化检测
 
     write_log("INIT batt=%d.%d lv=%d", batt / 10, batt % 10, battery_fan_level);
 }
