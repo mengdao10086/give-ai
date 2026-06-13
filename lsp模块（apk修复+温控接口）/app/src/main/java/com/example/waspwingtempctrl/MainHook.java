@@ -31,6 +31,7 @@ public class MainHook implements IXposedHookLoadPackage {
     private static final String TARGET_PACKAGE = "com.flydigi.waspwing.experimental";
     private static final String TAG = "[WaspWingTempCtrl]";
     private static final String FIFO_PATH = "/data/local/tmp/b6x_fifo";
+    private static Object capturedWaspWingMgr = null;  // 构造函数钩子捕获的实例
 
     /**
      * 向 FIFO 写入一个字节，通知 tempctrl 守护进程
@@ -71,34 +72,33 @@ public class MainHook implements IXposedHookLoadPackage {
                                 + " temp=" + temperature + " windOC=" + windOC
                                 + " coldOC=" + coldOC + " windLv=" + windLevel);
 
-                        // 通过 WaspWingManager 调用 setRunMode（尝试多种单例获取方式）
+                        // 调用 setRunMode——优先用构造函数捕获的实例，其次试单例
                         try {
-                            Class<?> mgrCls = context.getClassLoader()
-                                    .loadClass("com.flydigi.sdk.waspwing.WaspWingManager");
-
-                            // Try multiple singleton access patterns
-                            Object inst = null;
-                            String[] methods = {"getInstance", "get", "getDefault"};
-                            for (String m : methods) {
-                                try {
-                                    inst = XposedHelpers.callStaticMethod(mgrCls, m);
-                                    if (inst != null) break;
-                                } catch (Throwable t) { /* try next */ }
-                            }
-                            // Kotlin object pattern → INSTANCE field
+                            Object inst = capturedWaspWingMgr;
                             if (inst == null) {
-                                try {
-                                    inst = XposedHelpers.getObjectField(mgrCls, "INSTANCE");
-                                } catch (Throwable t) { /* ok */ }
+                                // 构造函数还没触发过，试单例方式兜底
+                                Class<?> mgrCls = context.getClassLoader()
+                                        .loadClass("com.flydigi.sdk.waspwing.WaspWingManager");
+                                String[] methods = {"getInstance", "get", "getDefault"};
+                                for (String m : methods) {
+                                    try {
+                                        inst = XposedHelpers.callStaticMethod(mgrCls, m);
+                                        if (inst != null) break;
+                                    } catch (Throwable t) { /* next */ }
+                                }
+                                if (inst == null) {
+                                    try {
+                                        inst = XposedHelpers.getObjectField(mgrCls, "INSTANCE");
+                                    } catch (Throwable t) { /* ok */ }
+                                }
                             }
 
                             if (inst != null) {
                                 XposedHelpers.callMethod(inst, "setRunMode",
                                         mode, temperature, windOC, coldOC,
                                         windLevel, modeCustom, extra);
-                                XposedBridge.log(TAG + " setRunMode 成功");
                             } else {
-                                XposedBridge.log(TAG + " setRunMode 失败: 找不到 WaspWingManager 实例");
+                                XposedBridge.log(TAG + " setRunMode 失败: WaspWingManager 实例未就绪");
                             }
                         } catch (Throwable t) {
                             XposedBridge.log(TAG + " setRunMode 异常: " + t.getMessage());
@@ -407,6 +407,22 @@ public class MainHook implements IXposedHookLoadPackage {
                     });
 
             XposedBridge.log(TAG + " 已钩住 B6ExperimentalActivity.onResume → FIFO");
+
+            // ===== 捕获 WaspWingManager 实例（用于 setRunMode） =====
+            try {
+                Class<?> mgrCls = lpparam.classLoader.loadClass(
+                        "com.flydigi.sdk.waspwing.WaspWingManager");
+                XposedBridge.hookAllConstructors(mgrCls, new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) {
+                        capturedWaspWingMgr = param.thisObject;
+                        XposedBridge.log(TAG + " 已捕获 WaspWingManager 实例");
+                    }
+                });
+                XposedBridge.log(TAG + " 已钩住 WaspWingManager 构造函数");
+            } catch (Exception e) {
+                XposedBridge.log(TAG + " 钩 WaspWingManager 失败: " + e.getMessage());
+            }
         } catch (Exception e) {
             XposedBridge.log(TAG + " 钩 B6ExperimentalActivity 失败: " + e.getMessage());
         }
