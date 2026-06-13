@@ -88,7 +88,8 @@ public class MainHook implements IXposedHookLoadPackage {
                                 }
                                 if (inst == null) {
                                     try {
-                                        inst = XposedHelpers.getObjectField(mgrCls, "INSTANCE");
+                                        // Kotlin object singleton: ClassName.INSTANCE
+                                        inst = XposedHelpers.getStaticObjectField(mgrCls, "INSTANCE");
                                     } catch (Throwable t) { /* ok */ }
                                 }
                             }
