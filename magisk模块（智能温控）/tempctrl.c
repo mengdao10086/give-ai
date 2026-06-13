@@ -255,6 +255,8 @@ static int forced_min_level = 0;       // 紧急强制最低档位
 static int cpu_weighted = 250;         // 加权 CPU 温度，初始 25.0°C
 static int cooldown_counter = 0;       // 冷却期剩余周期数
 static int prev_batt_temp = -1;       // 上次调整时的电池温度（变化检测）
+static int last_batt_reading = -1;    // 上次读取的电池温度（趋势判断）
+static int trend_override = 0;        // 趋势豁免计数器（最多 6 次）
 static int first_run = 1;             // 首次运行（滤波初始化）
 static volatile int running = 1;       // 信号控制标记
 
@@ -499,6 +501,8 @@ static void reset_state(void) {
     cpu_weighted = 250;      // 25.0°C
     first_run = 1;
     prev_batt_temp = -1;     // 重置温度变化检测
+    last_batt_reading = -1;  // 重置趋势判断
+    trend_override = 0;      // 重置豁免计数器
 
     app_dead_since = 0;
     app_was_alive = 1;                 // 重置后视为 App 存活，等待检测
@@ -560,13 +564,37 @@ static void battery_control(void) {
 
     if (delta != 0) {
         int old = battery_fan_level;
-        prev_batt_temp = batt;
-        battery_fan_level += delta;
-        battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
-        cooldown_counter = COOLDOWN_CYCLES;
 
-        write_log("BATT batt=%d.%d diff=%+d delta=%+d lv %d→%d",
-                  batt / 10, batt % 10, diff, delta, old, battery_fan_level);
+        // ----- 温度变化趋势检测 -----
+        // 如果温度变化方向与升降档方向相反，最多豁免 6 次
+        if (last_batt_reading >= 0) {
+            if ((delta > 0 && batt < last_batt_reading) ||
+                (delta < 0 && batt > last_batt_reading)) {
+                if (trend_override < 6) {
+                    trend_override++;
+                    delta = 0;
+                    write_log("BATT trend reverse (override %d/6)",
+                              trend_override);
+                } else {
+                    trend_override = 0;
+                }
+            } else {
+                trend_override = 0;
+            }
+        }
+        last_batt_reading = batt;
+
+        if (delta != 0) {
+            prev_batt_temp = batt;
+            battery_fan_level += delta;
+            battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
+            cooldown_counter = COOLDOWN_CYCLES;
+
+            write_log("BATT batt=%d.%d diff=%+d delta=%+d lv %d→%d",
+                      batt / 10, batt % 10, diff, delta, old, battery_fan_level);
+        } else {
+            prev_batt_temp = batt;
+        }
     } else {
         // 死区内或恰好等于基准 → 记录温度但不下调
         prev_batt_temp = batt;
@@ -651,6 +679,7 @@ static void init_fan_level(void) {
     init = clamp(init, LEVEL_MIN, LEVEL_MAX);
     battery_fan_level = init;
     prev_batt_temp = batt;    // 记录初始温度用于变化检测
+    last_batt_reading = batt; // 记录初始温度用于趋势判断
 
     write_log("INIT batt=%d.%d lv=%d", batt / 10, batt % 10, battery_fan_level);
 }
