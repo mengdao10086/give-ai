@@ -102,13 +102,12 @@ python3 patch_tls.py tempctrl   # 修复 PT_TLS 对齐
 
 | 任务 | 优先级 | 说明 |
 |------|--------|------|
-| 本地编译测试 | 🔴 高 | 在手机上用 Termux 编译 `tempctrl.c`，推送到手机测试 |
 | 进程检测与恢复（双重检测） | 🟡 中 | pgrep + status 文件 mtime 16 秒超时，模块断写心跳后 daemon 能否正确判死并恢复 |
-| am broadcast 参数验证 | 🟡 中 | 确认 `windOC`/`coldOC`/`windLevel` 参数在真机上的效果 |
-| 档位映射验证 | 🟡 中 | 各档位风扇转速和制冷片强度是否与表格预期一致 |
 | 断联超时重置测试 | 🟡 中 | BLE 断开 >60 秒重连后，daemon 是否执行 `reset_state()` |
-| Magisk 模块封装 | 🟢 低 | 将 `tempctrl` 二进制封装为 Magisk 模块，含 `service.sh` |
 | Status 文件 BLE 状态上报 | 🟡 中 | 模块每 5 秒写 BLE=0/1 到 status 文件，daemon 读取并响应 |
+| config 热重载验证 | 🟡 中 | 修改 `profile.conf` 后是否自动生效 |
+| 峰值过冲抑制测试 | 🟡 中 | 温度快速变化时反向补偿是否合理，日志确认 |
+| 退出紧急降档验证 | 🟡 中 | 电池温度高于升档阈值时是否正确跳过 cap |
 
 ### CI 可改进
 
