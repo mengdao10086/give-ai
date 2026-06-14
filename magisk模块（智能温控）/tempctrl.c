@@ -877,6 +877,7 @@ static void battery_control(void) {
         if (old != battery_fan_level) {
             batt_cooldown = BATT_COOLDOWN_CYCLES;
             write_log("档位%d %+d", old, delta);
+        }
     }
 
     // 更新温度记录
