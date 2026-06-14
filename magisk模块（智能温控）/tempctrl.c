@@ -819,7 +819,9 @@ static void battery_control(void) {
             battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
             skip_delta = 1;
             if (old != battery_fan_level)
-                write_log("过冲 %+d %d→%d", adjust, old, battery_fan_level);
+                write_log("过冲%d.%d 挡位%d %+d",
+                          abs_change / 10, abs_change % 10,
+                          old, adjust);
         }
     }
 
