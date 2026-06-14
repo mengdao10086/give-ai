@@ -125,10 +125,9 @@ static int PEAK_DAMP_OUTER_THRESHOLD = 3;
 static int PEAK_DAMP_INNER_ADJUST    = 2;
 static int PEAK_DAMP_OUTER_ADJUST    = 1;
 
-// --- 初始档位计算参数（可配置）---
-// 启动时根据 (当前温度 - INIT_TEMP_OFFSET) / INIT_DIVISOR 计算初始档位
-static int INIT_DIVISOR = 10;
-static int INIT_TEMP_OFFSET = 350;   // 初始档位的基准温度，默认同 BATT_BASELINE
+// --- 电池调档冷却周期数（可配置）---
+// 每次电池温度导致的档位变动后冻结多少周期（×5s），期内跳过常规升降档
+static int BATT_COOLDOWN_CYCLES = 3;
 
 // --- 状态文件超时（秒，可配置）---
 static int STATUS_TIMEOUT = 16;
@@ -232,8 +231,7 @@ static void load_config(const char *path) {
         else if (strcmp(key, "PEAK_DAMP_OUTER_THRESHOLD") == 0) PEAK_DAMP_OUTER_THRESHOLD = clamp(val, 1, 10);
         else if (strcmp(key, "PEAK_DAMP_INNER_ADJUST") == 0)    PEAK_DAMP_INNER_ADJUST    = clamp(val, 1, 3);
         else if (strcmp(key, "PEAK_DAMP_OUTER_ADJUST") == 0)    PEAK_DAMP_OUTER_ADJUST    = clamp(val, 1, 3);
-        else if (strcmp(key, "INIT_DIVISOR") == 0)         INIT_DIVISOR       = clamp(val, 1, 50);
-        else if (strcmp(key, "INIT_TEMP_OFFSET") == 0)     INIT_TEMP_OFFSET   = clamp(val, 200, 500);
+        else if (strcmp(key, "BATT_COOLDOWN_CYCLES") == 0) BATT_COOLDOWN_CYCLES = clamp(val, 0, 20);
         else if (strcmp(key, "STATUS_TIMEOUT") == 0)       STATUS_TIMEOUT     = clamp(val, 5, 60);
         else if (strcmp(key, "CPU_ZONE_MIN") == 0)          CPU_ZONE_MIN       = clamp(val, 0, 99);
         else if (strcmp(key, "CPU_ZONE_MAX") == 0)          CPU_ZONE_MAX       = clamp(val, 0, 99);
@@ -311,7 +309,7 @@ static int battery_fan_level = 0;      // 电池控制决定的基础档位
 static int emergency_level = 0;        // CPU 紧急等级 0~3
 static int forced_min_level = 0;       // 紧急强制最低档位
 static int cpu_weighted = 250;         // 加权 CPU 温度，初始 25.0°C
-static int cooldown_counter = 0;       // 冷却期剩余周期数
+static int batt_cooldown = 0;          // 电池调档冷却剩余周期
 static int prev_batt_temp = -1;       // 上次调整时的电池温度（变化检测）
 static int last_batt_reading = -1;    // 上次读取的电池温度（趋势判断）
 static int trend_override = 0;        // 趋势豁免计数器（最多 6 次）
@@ -688,23 +686,14 @@ static int is_app_alive(void) {
 
 /**
  * 重置所有状态（视为刚开机）
- * 根据当前电池温度重新计算初始档位
+ * 从 1 档（最低待机）起步
  */
 static void reset_state(void) {
-    int batt = read_battery_temp();
-    if (batt >= 0) {
-        // 基准温度 → 0 档，每 1°C 一档，范围 0~10
-        int init = (batt - INIT_TEMP_OFFSET) / INIT_DIVISOR;
-        init = clamp(init, LEVEL_MIN, LEVEL_MAX);
-        battery_fan_level = init;
-        write_log("重置 电池=%d.%d 初始档=%d",
-                  batt / 10, batt % 10, battery_fan_level);
-    } else {
-        battery_fan_level = 0;
-        write_log("重置 电池读取失败 默认档=0");
-    }
+    battery_fan_level = LEVEL_MIN;
+    write_log("重置 初始档=%d", battery_fan_level);
 
-    cooldown_counter = 0;
+    batt_cooldown = 0;
+    batt_cooldown = 0;
     emergency_level = 0;
     forced_min_level = 0;
     cpu_weighted = 250;      // 25.0°C
@@ -775,7 +764,14 @@ static void battery_control(void) {
         int trend_rev = (delta > 0 && batt < last_batt_reading) ||
                         (delta < 0 && batt > last_batt_reading);
 
-        if (abs_change <= 3) {
+        // 冷却期内跳过常规升降档和豁免，峰值反补仍运行（安全机制）
+        int in_cooldown = (batt_cooldown > 0);
+        if (in_cooldown) {
+            batt_cooldown--;
+            skip_delta = 1;   // 冷却期内 delta 不执行
+        }
+
+        if (!in_cooldown && abs_change <= 3) {
             // ═══ 小变动（≤0.3°C）→ 趋势豁免 ═══
             // 最高/最低档位时不触发豁免
             if (trend_rev && battery_fan_level > LEVEL_MIN &&
@@ -790,27 +786,23 @@ static void battery_control(void) {
                     }
                 } else {
                     trend_override = 0;
-                    // 超限，强制执行
                 }
             } else {
                 trend_override = 0;
             }
-        } else {
-            // ═══ 大变动（>0.3°C）→ 峰值反补 ═══
-            trend_override = 0;   // 豁免计数清零
+        }
+
+        if (abs_change > 3) {
+            // ═══ 大变动（>0.3°C）→ 峰值反补（冷却期也执行） ═══
+            trend_override = 0;
 
             int adjust = 0;
             if (abs_diff <= BATT_ZONE_2) {
-                // 基准 2°C 以内
-                if (abs_change <= 5) {
-                    // 0.3~0.5°C → 反补 1 档
+                if (abs_change <= 5)
                     adjust = (batt_change > 0) ? 1 : -1;
-                } else {
-                    // >0.5°C → 反补 PEAK_DAMP_INNER_ADJUST 档
+                else
                     adjust = (batt_change > 0) ? PEAK_DAMP_INNER_ADJUST : -PEAK_DAMP_INNER_ADJUST;
-                }
             } else {
-                // 基准 2°C 以外 → 反补 PEAK_DAMP_OUTER_ADJUST 档
                 adjust = (batt_change > 0) ? PEAK_DAMP_OUTER_ADJUST : -PEAK_DAMP_OUTER_ADJUST;
             }
 
@@ -818,10 +810,12 @@ static void battery_control(void) {
             battery_fan_level += adjust;
             battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
             skip_delta = 1;
-            if (old != battery_fan_level)
+            if (old != battery_fan_level) {
+                batt_cooldown = BATT_COOLDOWN_CYCLES;
                 write_log("过冲%d.%d 挡位%d %+d",
                           abs_change / 10, abs_change % 10,
                           old, adjust);
+            }
         }
     }
 
@@ -830,7 +824,8 @@ static void battery_control(void) {
         int old = battery_fan_level;
         battery_fan_level += delta;
         battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
-        if (old != battery_fan_level)
+        if (old != battery_fan_level) {
+            batt_cooldown = BATT_COOLDOWN_CYCLES;
             write_log("档位%d %+d", old, delta);
     }
 
@@ -895,29 +890,6 @@ static void emergency_intervention(void) {
         case 1: forced_min_level = EMERG_FORCED_1; break;
         default: forced_min_level = 0;             break;
     }
-}
-
-// ======================== 初始档位 ========================
-
-/**
- * 启动时根据电池温度设定初始档位
- * 35.0°C → 0 档，每 ±1°C → ±1 档，范围 0~10
- */
-static void init_fan_level(void) {
-    int batt = read_battery_temp();
-    if (batt < 0) {
-        battery_fan_level = 0;
-        write_log("启动 电池读取失败 默认档=0");
-        return;
-    }
-
-    int init = (batt - INIT_TEMP_OFFSET) / INIT_DIVISOR;
-    init = clamp(init, LEVEL_MIN, LEVEL_MAX);
-    battery_fan_level = init;
-    prev_batt_temp = batt;    // 记录初始温度用于变化检测
-    last_batt_reading = batt; // 记录初始温度用于趋势判断
-
-    write_log("启动 电池=%d.%d°C 档=%d", batt / 10, batt % 10, battery_fan_level);
 }
 
 // ======================== 主循环 ========================
@@ -1026,8 +998,16 @@ int main(int argc, char *argv[]) {
     set_default_status_path();
     create_status_file();
 
-    // --- 初始化档位 ---
-    init_fan_level();
+    // --- 初始化档位（从 1 档起步） ---
+    battery_fan_level = LEVEL_MIN;
+    batt_cooldown = 0;
+    {
+        int batt = read_battery_temp();
+        if (batt >= 0) {
+            prev_batt_temp = batt;
+            last_batt_reading = batt;
+        }
+    }
     write_log("=== 智能温控启动(档位%d) ===", battery_fan_level);
 
     // --- 等待模块就绪（进程存活 + status 文件有内容） ---
@@ -1059,7 +1039,7 @@ int main(int argc, char *argv[]) {
 
     // --- 进入工作模式 ---
     app_was_alive = 1;
-    cooldown_counter = 0;
+    batt_cooldown = 0;
     emergency_level = 0;
     forced_min_level = 0;
     first_run = 1;
