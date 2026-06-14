@@ -138,6 +138,7 @@ static int STATUS_TIMEOUT = 16;
 
 // --- 日志路径（默认根据二进制名自动生成，可由 profile.conf 覆盖）---
 static char log_file_path[256] = "";
+static int LOG_MAX_KB = 10;          // 日志文件大小上限（KB），0=关闭日志
 
 // ======================== 配置文件系统 ========================
 
@@ -209,6 +210,7 @@ static void load_config(const char *path) {
         else if (strcmp(key, "INIT_DIVISOR") == 0)         INIT_DIVISOR       = clamp(val, 1, 50);
         else if (strcmp(key, "INIT_TEMP_OFFSET") == 0)     INIT_TEMP_OFFSET   = clamp(val, 200, 500);
         else if (strcmp(key, "STATUS_TIMEOUT") == 0)       STATUS_TIMEOUT     = clamp(val, 5, 60);
+        else if (strcmp(key, "LOG_MAX_KB") == 0)           LOG_MAX_KB         = clamp(val, 0, 1000);
         else if (strcmp(key, "LOG_FILE") == 0) {
             // 直接从 val_str 读取字符串路径
             char *v = val_str;
@@ -314,17 +316,44 @@ static int app_ble_connected = 0;
 // ======================== 辅助函数 ========================
 
 /**
- * 写入日志（自动滚动：超 10KB 后备份为 .old 重新开始）
+ * 写入日志（自动滚动：超上限后删除最早 1~2 行）
  * 日期格式：日+时间，无年月（例 "14 22:30:16"）
+ * LOG_MAX_KB=0 时关闭日志
  */
 static void write_log(const char *fmt, ...) {
-    // 大小检查与滚动
+    if (LOG_MAX_KB == 0) return;     // 日志关闭
+
+    int max_bytes = LOG_MAX_KB * 1024;
+
+    // 超标 → 滚动：读文件，跳过最早 2 行，重写剩余内容
     struct stat st;
-    if (stat(log_file_path, &st) == 0 && st.st_size > 10240) {
-        char old_path[384];
-        snprintf(old_path, sizeof(old_path), "%s.old", log_file_path);
-        remove(old_path);
-        rename(log_file_path, old_path);
+    if (stat(log_file_path, &st) == 0 && st.st_size > max_bytes) {
+        size_t sz = st.st_size;
+        char *buf = malloc(sz + 1);
+        if (buf) {
+            FILE *rf = fopen(log_file_path, "r");
+            if (rf) {
+                size_t rd = fread(buf, 1, sz, rf);
+                buf[rd] = '\0';
+                fclose(rf);
+
+                // 跳过前 2 个换行（删除最早 2 行）
+                int nl = 0;
+                char *tail = buf;
+                while (*tail && nl < 2) {
+                    if (*tail == '\n') nl++;
+                    tail++;
+                }
+
+                // 重写
+                FILE *wf = fopen(log_file_path, "w");
+                if (wf) {
+                    fwrite(tail, 1, rd - (tail - buf), wf);
+                    fclose(wf);
+                }
+            }
+            free(buf);
+        }
     }
 
     FILE *f = fopen(log_file_path, "a");
@@ -603,9 +632,8 @@ static int apply_level(int level) {
     last_coldOC        = coldOC;
     last_windLevel     = windLevel;
 
-    // ---- 日志 ----
-    write_log("SEND lv=%d mode=%d t=%d wOC=%d cOC=%d wLv=%d ret=%d",
-              level, mode, target, windOC, coldOC, windLevel, ret);
+    // ---- 日志（仅档位） ----
+    write_log("下发 档位=%d", level);
 
     return 1;
 }
@@ -767,14 +795,15 @@ static void battery_control(void) {
                 }
             }
 
-            // 应用豁免（最多 6 次连续豁免）
+            // 应用豁免（最多 OVERRIDE_MAX 次连续豁免）
             if (should_exempt) {
                 if (trend_override < OVERRIDE_MAX) {
+                    int first = (trend_override == 0);
                     trend_override++;
                     delta = 0;
-                    if (old > LEVEL_MIN && old < LEVEL_MAX)
-                        write_log("趋势豁免(%d/%d)",
-                                  trend_override, OVERRIDE_MAX);
+                    if (first && old > LEVEL_MIN && old < LEVEL_MAX)
+                        write_log("趋势豁免 %d→%d (上限%d)",
+                                  old, battery_fan_level, OVERRIDE_MAX);
                 } else {
                     trend_override = 0;
                 }
