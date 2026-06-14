@@ -57,6 +57,7 @@
 // --- 档位范围 ---
 #define LEVEL_MAX          12
 #define LEVEL_MIN           1     // 档位范围 1~12（1=最低待机，12=满功率）
+#define LEVEL_INIT          5     // 无存档时的默认初始档位
 
 // --- 档位查表 ---
 // 注意：风扇转速、目标温度、制冷片强度在档位间不是线性关系，
@@ -333,6 +334,7 @@ static time_t app_dead_since = 0;      // App 失联起始时间戳
 // 模块每 5 秒写入一次 status 文件，daemon 通过 mtime 判断进程是否活着
 // 同时读取 BLE=0/1 获知 BLE 连接状态
 static char status_file_path[512] = "";
+static char gear_file_path[512] = "";
 static int app_ble_connected = 0;
 
 // ======================== 辅助函数 ========================
@@ -465,6 +467,52 @@ static void read_status_ble(void) {
         }
     }
     fclose(f);
+}
+
+// ======================== 档位存档（持久化上次档位） ========================
+
+/**
+ * 设定齿轮存档路径（根据 /proc/self/exe 推导）
+ */
+static void set_gear_file_path(void) {
+    char exe[512];
+    ssize_t len = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    if (len > 0) {
+        exe[len] = '\0';
+        char *s = strrchr(exe, '/');
+        if (s) {
+            s++;
+            snprintf(gear_file_path, sizeof(gear_file_path),
+                     "/data/local/tmp/%s.gear", s);
+            return;
+        }
+    }
+    strncpy(gear_file_path, "/data/local/tmp/tempctrl.gear",
+            sizeof(gear_file_path) - 1);
+}
+
+/**
+ * 保存档位到存档文件
+ */
+static void save_gear(int level) {
+    FILE *f = fopen(gear_file_path, "w");
+    if (f) {
+        fprintf(f, "%d\n", level);
+        fclose(f);
+    }
+}
+
+/**
+ * 读取存档档位，失败返回 LEVEL_INIT
+ */
+static int load_gear(void) {
+    FILE *f = fopen(gear_file_path, "r");
+    if (!f) return LEVEL_INIT;
+    int val = LEVEL_INIT;
+    fscanf(f, "%d", &val);
+    fclose(f);
+    if (val < LEVEL_MIN || val > LEVEL_MAX) return LEVEL_INIT;
+    return val;
 }
 
 // ======================== 温度读取 ========================
@@ -654,6 +702,9 @@ static int apply_level(int level) {
     last_coldOC        = coldOC;
     last_windLevel     = windLevel;
 
+    // 每次下发成功后保存档位（用于下次启动时继承）
+    save_gear(level);
+
     return 1;
 }
 
@@ -686,10 +737,9 @@ static int is_app_alive(void) {
 
 /**
  * 重置所有状态（视为刚开机）
- * 从 1 档（最低待机）起步
  */
 static void reset_state(void) {
-    battery_fan_level = LEVEL_MIN;
+    battery_fan_level = LEVEL_INIT;
     write_log("重置 初始档=%d", battery_fan_level);
 
     batt_cooldown = 0;
@@ -994,12 +1044,13 @@ int main(int argc, char *argv[]) {
         if (stat(config_path, &st) == 0) config_mtime = st.st_mtime;
     }
 
-    // --- 状态文件初始化（模块心跳 + BLE 状态） ---
+    // --- 状态文件 + 档位存档初始化 ---
     set_default_status_path();
     create_status_file();
+    set_gear_file_path();
 
-    // --- 初始化档位（从 1 档起步） ---
-    battery_fan_level = LEVEL_MIN;
+    // --- 初始化档位（继承上次档位，无存档用 LEVEL_INIT=5） ---
+    battery_fan_level = load_gear();
     batt_cooldown = 0;
     {
         int batt = read_battery_temp();
@@ -1020,7 +1071,7 @@ int main(int argc, char *argv[]) {
             FILE *f = fopen(status_file_path, "r");
             if (f) {
                 char line[16];
-                if (fgets(line, sizeof(line), f) && strncmp(line, "BLE=", 4) == 0)
+                if (fgets(line, sizeof(line), f) && strncmp(line, "BLE=1", 5) == 0)
                     ready = 1;
                 fclose(f);
             }
@@ -1032,7 +1083,7 @@ int main(int argc, char *argv[]) {
         // 降低日志频率：每 30 秒（6 轮）打一次
         static int wait_noise = 0;
         if (++wait_noise % 6 == 1)
-            write_log("等待 模块未就绪，5秒后重试...");
+            write_log("等待 BLE连接，5秒后重试...");
         sleep(5);
     }
     if (!running) goto exit;
