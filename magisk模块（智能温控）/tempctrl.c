@@ -133,9 +133,6 @@ static int INIT_TEMP_OFFSET = 350;   // 初始档位的基准温度，默认同 
 // 模块最后一次写文件超过此秒数 → 判死
 static int STATUS_TIMEOUT = 16;
 
-// --- 配置文件开关（可配置，需在 profile.conf 第一行）---
-// =0 则不加载任何配置，全部使用代码内默认值
-static int CONFIG_ENABLED = 0;
 
 // --- 日志路径（默认根据二进制名自动生成，可由 profile.conf 覆盖）---
 static char log_file_path[256] = "";
@@ -210,8 +207,7 @@ static void load_config(const char *path) {
         int val = atoi(val_str);
 
         // ---- 匹配 key ----
-        if      (strcmp(key, "CONFIG_ENABLED") == 0)       CONFIG_ENABLED     = clamp(val, 0, 1);
-        else if (strcmp(key, "BATT_BASELINE") == 0)        BATT_BASELINE      = clamp(val, 300, 500);
+        if      (strcmp(key, "BATT_BASELINE") == 0)        BATT_BASELINE      = clamp(val, 300, 500);
         else if (strcmp(key, "BATT_ZONE_1") == 0)          BATT_ZONE_1        = clamp(val, 1, 100);
         else if (strcmp(key, "BATT_ZONE_2") == 0)          BATT_ZONE_2        = clamp(val, 1, 100);
         else if (strcmp(key, "CPU_EMERG_3") == 0)          CPU_EMERG_3        = clamp(val, 600, 1000);
