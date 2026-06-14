@@ -38,8 +38,8 @@
 //   5    固定功率(mode=1)    —        2900           80        低功耗1
 //   4    固定功率(mode=1)    —        2500           60        低功耗2
 //   3    固定功率(mode=1)    —        2200           40        低功耗3
-//   2    固定功率(mode=1)    —        2000           20        伪待机
-//   1    固定功率(mode=1)    —        2000           10        超低待机
+//   2    固定功率(mode=1)    —        2000           20        伪待机4
+//   1    固定功率(mode=1)    —        2000           10        伪待机
 //
 // setRunMode 签名：
 //   setRunMode(mode, targetTemperature,
@@ -656,9 +656,6 @@ static int apply_level(int level) {
     last_coldOC        = coldOC;
     last_windLevel     = windLevel;
 
-    // ---- 日志（仅档位） ----
-    write_log("下发 档位=%d", level);
-
     return 1;
 }
 
@@ -780,15 +777,16 @@ static void battery_control(void) {
 
         if (abs_change <= 3) {
             // ═══ 小变动（≤0.3°C）→ 趋势豁免 ═══
-            if (trend_rev) {
+            // 最高/最低档位时不触发豁免
+            if (trend_rev && battery_fan_level > LEVEL_MIN &&
+                battery_fan_level < LEVEL_MAX) {
                 if (trend_override < OVERRIDE_MAX) {
                     int first = (trend_override == 0);
                     trend_override++;
                     skip_delta = 1;
                     if (first) {
                         int old = battery_fan_level;
-                        write_log("趋势豁免 %d→%d (上限%d)",
-                                  old, battery_fan_level, OVERRIDE_MAX);
+                        write_log("趋势豁免 %d", old);
                     }
                 } else {
                     trend_override = 0;
@@ -820,8 +818,8 @@ static void battery_control(void) {
             battery_fan_level += adjust;
             battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
             skip_delta = 1;
-            write_log("过冲抑制 %+d (变=%d/5s) %d→%d",
-                      adjust, batt_change, old, battery_fan_level);
+            if (old != battery_fan_level)
+                write_log("过冲 %+d %d→%d", adjust, old, battery_fan_level);
         }
     }
 
@@ -830,8 +828,8 @@ static void battery_control(void) {
         int old = battery_fan_level;
         battery_fan_level += delta;
         battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
-        write_log("电池 %d.%d°C 档%+d %d→%d",
-                  batt / 10, batt % 10, delta, old, battery_fan_level);
+        if (old != battery_fan_level)
+            write_log("档位%d %+d", old, delta);
     }
 
     // 更新温度记录
