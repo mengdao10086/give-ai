@@ -135,7 +135,7 @@ static int STATUS_TIMEOUT = 16;
 
 // --- 配置文件开关（可配置，需在 profile.conf 第一行）---
 // =0 则不加载任何配置，全部使用代码内默认值
-static int CONFIG_ENABLED = 1;
+static int CONFIG_ENABLED = 0;
 
 // --- 日志路径（默认根据二进制名自动生成，可由 profile.conf 覆盖）---
 static char log_file_path[256] = "";
