@@ -467,9 +467,9 @@ public class MainHook implements IXposedHookLoadPackage {
                     });
             XposedBridge.log(TAG + " 已钩住 WaspWingDataInteractionController 构造"
                     + "（修复 runFetchLoop CPU 满载）");
-        } catch (Exception e) {
-            XposedBridge.log(TAG + " 钩 AbstractDataInteractionController 失败: "
-                    + e.getMessage());
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + " 构 WaspWingDataInteractionController 失败: "
+                    + t.getMessage());
         }
 
         // ========== 智能温控唤醒：B6ExperimentalActivity.onResume ==========

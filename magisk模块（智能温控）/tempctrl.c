@@ -970,21 +970,29 @@ int main(int argc, char *argv[]) {
     init_fan_level();
     write_log("=== tempctrl STARTED (level=%d) ===", battery_fan_level);
 
-    // --- 等待 App 进程出现 ---
-    // 初始等待仅用 pgrep（status 文件此时刚创建，mtime 不反映模块状态）
+    // --- 等待模块就绪（进程存活 + status 文件有内容） ---
+    // status 文件由模块在 Application.onCreate 中写入 "BLE=0/1\n"，
+    // 文件有内容即代表模块初始化完成。
     while (running) {
         if (system("pgrep -f 'com.flydigi.waspwing.experimental' >/dev/null 2>&1") == 0) {
-            write_log("WAIT app detected, entering work mode");
-            break;
+            // 检查 status 文件是否有模块写入的实际内容
+            int ready = 0;
+            FILE *f = fopen(status_file_path, "r");
+            if (f) {
+                char line[16];
+                if (fgets(line, sizeof(line), f) && strncmp(line, "BLE=", 4) == 0)
+                    ready = 1;
+                fclose(f);
+            }
+            if (ready) {
+                read_status_ble();
+                break;
+            }
         }
-        write_log("WAIT app not found, retry in 5s...");
+        write_log("WAIT module not ready, retry in 5s...");
         sleep(5);
     }
     if (!running) goto exit;
-
-    // 等模块初始化（BroadcastReceiver + 状态文件写入就绪）
-    write_log("WAIT waiting for module init...");
-    sleep(3);
 
     // --- 进入工作模式 ---
     app_was_alive = 1;
