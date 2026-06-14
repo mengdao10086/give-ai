@@ -28,17 +28,18 @@
 //
 // 档位    模式             目标温度   风扇转速/RPM   制冷片强度  说明
 // ─────────────────────────────────────────────────────────────────
-//  10    固定功率(mode=1)    —        6000          190        制冷峰值（更高强度下鳍片解热不足反而倒退）
-//   9    智能温控(mode=0)   12°C      5800          auto       紧急3-min
-//   8    智能温控(mode=0)   13°C      5500          auto       官方默认风扇满速值
-//   7    智能温控(mode=0)   14°C      5100          auto       紧急2-min
-//   6    智能温控(mode=0)   15°C      4600          auto
-//   5    智能温控(mode=0)   16°C      4000          auto       自此以下智能模式温度波动较大，紧急1-min
-//   4    智能温控(mode=0)   18°C      3400          auto
-//   3    固定功率(mode=1)    —        2900           80        低功耗1
-//   2    固定功率(mode=1)    —        2500           55        低功耗2
-//   1    固定功率(mode=1)    —        2200           30        低功耗3
-//   0    固定功率(mode=1)    —        2000           10        伪待机
+//  12    固定功率(mode=1)    —        6000          190        制冷峰值
+//  11    智能温控(mode=0)   12°C      5800          auto       紧急3-min
+//  10    智能温控(mode=0)   13°C      5500          auto       官方默认风扇满速值
+//   9    智能温控(mode=0)   14°C      5100          auto       紧急2-min
+//   8    智能温控(mode=0)   15°C      4600          auto
+//   7    智能温控(mode=0)   16°C      4000          auto       紧急1-min
+//   6    智能温控(mode=0)   18°C      3400          auto
+//   5    固定功率(mode=1)    —        2900           80        低功耗1
+//   4    固定功率(mode=1)    —        2500           60        低功耗2
+//   3    固定功率(mode=1)    —        2200           40        低功耗3
+//   2    固定功率(mode=1)    —        2000           20        伪待机
+//   1    固定功率(mode=1)    —        2000           10        超低待机
 //
 // setRunMode 签名：
 //   setRunMode(mode, targetTemperature,
@@ -54,31 +55,31 @@
 // ================================================================
 
 // --- 档位范围 ---
-#define LEVEL_MAX          10
-#define LEVEL_MIN           0     // 档位范围 0~10（无负档位）
+#define LEVEL_MAX          12
+#define LEVEL_MIN           1     // 档位范围 1~12（1=最低待机，12=满功率）
 
 // --- 档位查表 ---
 // 注意：风扇转速、目标温度、制冷片强度在档位间不是线性关系，
 //       必须使用查表法而非公式计算。
 
-// 档位 → 风扇转速 (RPM)
-static const int FAN_RPM_TABLE[11] = {
-    2000, 2200, 2500, 2900, 3400, 4000, 4600, 5100, 5500, 5800, 6000
+// 档位 → 风扇转速 (RPM)，索引 = level - 1
+static const int FAN_RPM_TABLE[12] = {
+    2000, 2000, 2200, 2500, 2900, 3400, 4000, 4600, 5100, 5500, 5800, 6000
 };
 
-// 档位 → 运行模式 (0=智能温控, 1=固定功率)
-static const int GEAR_MODE_TABLE[11] = {
-    1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1
+// 档位 → 运行模式 (0=智能温控, 1=固定功率)，索引 = level - 1
+static const int GEAR_MODE_TABLE[12] = {
+    1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 1
 };
 
-// 档位 → 智能温控目标温度 (°C)，固定功率模式该项无效（传 20 占位）
-static const int TARGET_TEMP_TABLE[11] = {
-    20, 20, 20, 20, 18, 16, 15, 14, 13, 12, 20
+// 档位 → 智能温控目标温度 (°C)，固定功率模式该项无效（传 20 占位），索引 = level - 1
+static const int TARGET_TEMP_TABLE[12] = {
+    20, 20, 20, 20, 20, 18, 16, 15, 14, 13, 12, 20
 };
 
-// 档位 → 固定功率制冷片强度，智能模式该项传 0（让散热器自行管理）
-static const int COLD_INTENSITY_TABLE[11] = {
-    10, 30, 55, 80, 0, 0, 0, 0, 0, 0, 190
+// 档位 → 固定功率制冷片强度，智能模式该项传 0（让散热器自行管理），索引 = level - 1
+static const int COLD_INTENSITY_TABLE[12] = {
+    10, 20, 40, 60, 80, 0, 0, 0, 0, 0, 0, 190
 };
 
 // --- 制冷片强度范围 ---
@@ -99,9 +100,9 @@ static int CPU_RECOVER_1 = 650;     // <65.0°C 且 ≥2 级时降为 1
 static int CPU_RECOVER_2 = 750;     // <75.0°C 且 ≥3 级时降为 2
 
 // --- 紧急强制最低档位 —— 可由 profile.conf 覆盖 ---
-static int EMERG_FORCED_1 = 5;
-static int EMERG_FORCED_2 = 7;
-static int EMERG_FORCED_3 = 9;
+static int EMERG_FORCED_1 = 6;   // 新档位 6 = 旧档位 5（智能 16°C/4000RPM）
+static int EMERG_FORCED_2 = 8;   // 新档位 8 = 旧档位 7（智能 14°C/5100RPM）
+static int EMERG_FORCED_3 = 10;  // 新档位 10 = 旧档位 9（智能 12°C/5800RPM）
 
 // --- FIFO 通信（已废弃，改用 pgrep 检测 App 进程）---
 // 保留 DISCONNECT_RESET_SEC 作为断联超时重置
@@ -130,8 +131,12 @@ static int INIT_DIVISOR = 10;
 static int INIT_TEMP_OFFSET = 350;   // 初始档位的基准温度，默认同 BATT_BASELINE
 
 // --- 状态文件超时（秒，可配置）---
-// 模块最后一次写文件超过此秒数 → 判死
 static int STATUS_TIMEOUT = 16;
+
+// --- CPU 温度扫描范围（可配置）---
+// 首次运行在此范围内扫描有效的 thermal_zone，后续只扫命中的 zone
+static int CPU_ZONE_MIN = 0;
+static int CPU_ZONE_MAX = 99;
 
 
 // --- 日志路径（默认根据二进制名自动生成，可由 profile.conf 覆盖）---
@@ -230,6 +235,8 @@ static void load_config(const char *path) {
         else if (strcmp(key, "INIT_DIVISOR") == 0)         INIT_DIVISOR       = clamp(val, 1, 50);
         else if (strcmp(key, "INIT_TEMP_OFFSET") == 0)     INIT_TEMP_OFFSET   = clamp(val, 200, 500);
         else if (strcmp(key, "STATUS_TIMEOUT") == 0)       STATUS_TIMEOUT     = clamp(val, 5, 60);
+        else if (strcmp(key, "CPU_ZONE_MIN") == 0)          CPU_ZONE_MIN       = clamp(val, 0, 99);
+        else if (strcmp(key, "CPU_ZONE_MAX") == 0)          CPU_ZONE_MAX       = clamp(val, 0, 99);
         else if (strcmp(key, "LOG_MAX_KB") == 0)           LOG_MAX_KB         = clamp(val, 0, 1000);
         else if (strcmp(key, "LOG_FILE") == 0) {
             char *v = val_str;
@@ -499,10 +506,10 @@ static int cpu_zone_scanned = 0;
  * 全部失败返回 -1
  */
 static int read_cpu_temp_max(void) {
-    // 首次调用 → 全量扫描 thermal_zone0~99，记录可用 zone
+    // 首次调用 → 在 CPU_ZONE_MIN~MAX 范围内扫描可用 zone
     if (!cpu_zone_scanned) {
         char path[64];
-        for (int i = 0; i <= 99; i++) {
+        for (int i = CPU_ZONE_MIN; i <= CPU_ZONE_MAX; i++) {
             snprintf(path, sizeof(path),
                      "/sys/class/thermal/thermal_zone%d/temp", i);
             FILE *f = fopen(path, "r");
@@ -522,7 +529,7 @@ static int read_cpu_temp_max(void) {
             }
         }
         cpu_zone_scanned = 1;
-        write_log("CPU扫描 %d 个有效 zone", cpu_zone_count);
+        write_log("CPU扫描 %d 个有效 zone (%d~%d)", cpu_zone_count, CPU_ZONE_MIN, CPU_ZONE_MAX);
     }
 
     // 后续调用 → 只扫描已记录的 zone
@@ -576,8 +583,8 @@ static void build_params(int level,
 {
     int mode, target, windOC, coldOC, windLevel;
 
-    mode   = GEAR_MODE_TABLE[level];
-    target = TARGET_TEMP_TABLE[level];
+    mode   = GEAR_MODE_TABLE[level - 1];
+    target = TARGET_TEMP_TABLE[level - 1];
     target = clamp(target, 5, 35);
 
     if (mode == 0) {
@@ -588,7 +595,7 @@ static void build_params(int level,
     } else {
         // --- 固定功率 ---
         windOC = FAN_RPM_TABLE[level];
-        coldOC = COLD_INTENSITY_TABLE[level];
+        coldOC = COLD_INTENSITY_TABLE[level - 1];
         coldOC = clamp(coldOC, COLD_MIN, COLD_MAX);
         windLevel = 0;
     }
@@ -823,8 +830,8 @@ static void battery_control(void) {
         int old = battery_fan_level;
         battery_fan_level += delta;
         battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
-        write_log("电池 %d.%d°C 偏%+d 调%+d %d→%d",
-                  batt / 10, batt % 10, diff, delta, old, battery_fan_level);
+        write_log("电池 %d.%d°C 档%+d %d→%d",
+                  batt / 10, batt % 10, delta, old, battery_fan_level);
     }
 
     // 更新温度记录
