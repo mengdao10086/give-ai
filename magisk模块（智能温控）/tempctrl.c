@@ -103,9 +103,6 @@ static int EMERG_FORCED_1 = 5;
 static int EMERG_FORCED_2 = 7;
 static int EMERG_FORCED_3 = 9;
 
-// --- 冷却期 —— 可由 profile.conf 覆盖 ---
-static int COOLDOWN_CYCLES = 4;     // 每次调整后冷却 20 秒（4×5s）
-
 // --- FIFO 通信（已废弃，改用 pgrep 检测 App 进程）---
 // 保留 DISCONNECT_RESET_SEC 作为断联超时重置
 static int DISCONNECT_RESET_SEC = 60;   // 断联超时秒数（可配置）
@@ -136,6 +133,10 @@ static int INIT_TEMP_OFFSET = 350;   // 初始档位的基准温度，默认同 
 // 模块最后一次写文件超过此秒数 → 判死
 static int STATUS_TIMEOUT = 16;
 
+// --- 配置文件开关（可配置，需在 profile.conf 第一行）---
+// =0 则不加载任何配置，全部使用代码内默认值
+static int CONFIG_ENABLED = 1;
+
 // --- 日志路径（默认根据二进制名自动生成，可由 profile.conf 覆盖）---
 static char log_file_path[256] = "";
 static int LOG_MAX_KB = 10;          // 日志文件大小上限（KB），0=关闭日志
@@ -157,36 +158,60 @@ static inline int clamp(int val, int lo, int hi);
  * 找不到文件则不修改任何变量（保持默认值）
  */
 static void load_config(const char *path) {
+    // ---- 先预检 CONFIG_ENABLED ----
     FILE *f = fopen(path, "r");
     if (!f) {
         write_log("配置 无法打开 %s", path);
         return;
     }
-
+    int enabled = 1;
     char line[256];
+    while (fgets(line, sizeof(line), f)) {
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '#' || *p == '\n' || *p == '\0') continue;
+        char *eq = strchr(p, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        char *k = p;
+        char *end = k + strlen(k) - 1;
+        while (end > k && (*end == ' ' || *end == '\t')) *end-- = '\0';
+        if (strcmp(k, "CONFIG_ENABLED") == 0) {
+            enabled = atoi(eq + 1) ? 1 : 0;
+            break;
+        }
+    }
+    fclose(f);
+
+    if (!enabled) {
+        write_log("配置 已禁用(CONFIG_ENABLED=0)，使用默认参数");
+        return;
+    }
+
+    // ---- 正常解析全部参数 ----
+    f = fopen(path, "r");
+    if (!f) return;
+
     int loaded = 0;
     while (fgets(line, sizeof(line), f)) {
         char *p = line;
-        // 跳过行首空白
         while (*p == ' ' || *p == '\t') p++;
-        // 跳过注释和空行
         if (*p == '#' || *p == '\n' || *p == '\0') continue;
 
-        // 按 '=' 分割 key/value
         char *eq = strchr(p, '=');
         if (!eq) continue;
         *eq = '\0';
         char *key = p;
         char *val_str = eq + 1;
 
-        // 去掉 key 尾部空白
         char *end = key + strlen(key) - 1;
         while (end > key && (*end == ' ' || *end == '\t')) *end-- = '\0';
 
         int val = atoi(val_str);
 
         // ---- 匹配 key ----
-        if      (strcmp(key, "BATT_BASELINE") == 0)        BATT_BASELINE      = clamp(val, 300, 500);
+        if      (strcmp(key, "CONFIG_ENABLED") == 0)       CONFIG_ENABLED     = clamp(val, 0, 1);
+        else if (strcmp(key, "BATT_BASELINE") == 0)        BATT_BASELINE      = clamp(val, 300, 500);
         else if (strcmp(key, "BATT_ZONE_1") == 0)          BATT_ZONE_1        = clamp(val, 1, 100);
         else if (strcmp(key, "BATT_ZONE_2") == 0)          BATT_ZONE_2        = clamp(val, 1, 100);
         else if (strcmp(key, "CPU_EMERG_3") == 0)          CPU_EMERG_3        = clamp(val, 600, 1000);
@@ -198,7 +223,6 @@ static void load_config(const char *path) {
         else if (strcmp(key, "EMERG_FORCED_1") == 0)       EMERG_FORCED_1     = clamp(val, 0, 10);
         else if (strcmp(key, "EMERG_FORCED_2") == 0)       EMERG_FORCED_2     = clamp(val, 0, 10);
         else if (strcmp(key, "EMERG_FORCED_3") == 0)       EMERG_FORCED_3     = clamp(val, 0, 10);
-        else if (strcmp(key, "COOLDOWN_CYCLES") == 0)      COOLDOWN_CYCLES    = clamp(val, 0, 100);
         else if (strcmp(key, "DISCONNECT_RESET_SEC") == 0) DISCONNECT_RESET_SEC = clamp(val, 10, 600);
         else if (strcmp(key, "CPU_FILTER_ALPHA") == 0)     CPU_FILTER_ALPHA   = clamp(val, 1, 100);
         else if (strcmp(key, "OVERRIDE_MAX") == 0)         OVERRIDE_MAX       = clamp(val, 0, 20);
@@ -212,10 +236,8 @@ static void load_config(const char *path) {
         else if (strcmp(key, "STATUS_TIMEOUT") == 0)       STATUS_TIMEOUT     = clamp(val, 5, 60);
         else if (strcmp(key, "LOG_MAX_KB") == 0)           LOG_MAX_KB         = clamp(val, 0, 1000);
         else if (strcmp(key, "LOG_FILE") == 0) {
-            // 直接从 val_str 读取字符串路径
             char *v = val_str;
             while (*v == ' ' || *v == '\t') v++;
-            // 去掉尾部换行/空白
             char *nl = v + strlen(v) - 1;
             while (nl > v && (*nl == '\n' || *nl == '\r' || *nl == ' ' || *nl == '\t')) *nl-- = '\0';
             if (*v) {
@@ -223,7 +245,6 @@ static void load_config(const char *path) {
                 log_file_path[sizeof(log_file_path) - 1] = '\0';
             }
         }
-        // 不识别的 key 静默跳过
         else { continue; }
 
         loaded++;
@@ -720,114 +741,98 @@ static void reset_state(void) {
  */
 static void battery_control(void) {
     int batt = read_battery_temp();
-    if (batt < 0) {
-        return;
-    }
+    if (batt < 0) return;
 
-    // 温度值与上次调整时相同 → 跳过升降档
-    if (batt == prev_batt_temp) {
-        return;
-    }
+    // 温度值与上次调整时相同 → 跳过所有逻辑
+    if (batt == prev_batt_temp) return;
 
-    // ---- 峰值过冲抑制：温度快速变化时反向补偿，抑制过冲/过冷 ----
-    // 基准 2°C 内：单次变动 >0.5°C（5 单位）→ 反向补偿 2 档
-    // 基准 2°C 外：单次变动 >0.3°C（3 单位）→ 反向补偿 1 档
+    // 计算本周期温度变化量
+    int batt_change = 0, abs_change = 0;
     if (last_batt_reading >= 0) {
-        int abs_diff = (batt > BATT_BASELINE) ? (batt - BATT_BASELINE) : (BATT_BASELINE - batt);
-        int batt_change = batt - last_batt_reading;
-        int abs_change = (batt_change > 0) ? batt_change : -batt_change;
-        int adjust = 0;
+        batt_change = batt - last_batt_reading;
+        abs_change = (batt_change > 0) ? batt_change : -batt_change;
+    }
 
-        if (abs_diff <= BATT_ZONE_2 && abs_change > PEAK_DAMP_INNER_THRESHOLD) {
-            adjust = (batt_change > 0) ? PEAK_DAMP_INNER_ADJUST : -PEAK_DAMP_INNER_ADJUST;
-        } else if (abs_diff > BATT_ZONE_2 && abs_change > PEAK_DAMP_OUTER_THRESHOLD) {
-            adjust = (batt_change > 0) ? PEAK_DAMP_OUTER_ADJUST : -PEAK_DAMP_OUTER_ADJUST;
-        }
+    // 计算常规档位调整量（无副作用，纯计算）
+    int diff = batt - BATT_BASELINE;
+    int delta = 0;
+    if (diff > 0) {
+        if      (diff <= BATT_ZONE_1) delta = 0;
+        else if (diff <= BATT_ZONE_2) delta = 1;
+        else                          delta = 2;
+    } else if (diff < 0) {
+        int ad = -diff;
+        if      (ad <= BATT_ZONE_1) delta = 0;
+        else if (ad <= BATT_ZONE_2) delta = -1;
+        else                        delta = -2;
+    }
 
-        if (adjust != 0) {
+    int abs_diff = (diff > 0) ? diff : -diff;
+    int skip_delta = 0;  // =1 时本次不执行常规升降档
+
+    // ═══════════════ 合并逻辑：趋势豁免 + 峰值过冲抑制 ═══════════════
+    if (last_batt_reading >= 0) {
+        int trend_rev = (delta > 0 && batt < last_batt_reading) ||
+                        (delta < 0 && batt > last_batt_reading);
+
+        if (abs_change <= 3) {
+            // ═══ 小变动（≤0.3°C）→ 趋势豁免 ═══
+            if (trend_rev) {
+                if (trend_override < OVERRIDE_MAX) {
+                    int first = (trend_override == 0);
+                    trend_override++;
+                    skip_delta = 1;
+                    if (first) {
+                        int old = battery_fan_level;
+                        write_log("趋势豁免 %d→%d (上限%d)",
+                                  old, battery_fan_level, OVERRIDE_MAX);
+                    }
+                } else {
+                    trend_override = 0;
+                    // 超限，强制执行
+                }
+            } else {
+                trend_override = 0;
+            }
+        } else {
+            // ═══ 大变动（>0.3°C）→ 峰值反补 ═══
+            trend_override = 0;   // 豁免计数清零
+
+            int adjust = 0;
+            if (abs_diff <= BATT_ZONE_2) {
+                // 基准 2°C 以内
+                if (abs_change <= 5) {
+                    // 0.3~0.5°C → 反补 1 档
+                    adjust = (batt_change > 0) ? 1 : -1;
+                } else {
+                    // >0.5°C → 反补 PEAK_DAMP_INNER_ADJUST 档
+                    adjust = (batt_change > 0) ? PEAK_DAMP_INNER_ADJUST : -PEAK_DAMP_INNER_ADJUST;
+                }
+            } else {
+                // 基准 2°C 以外 → 反补 PEAK_DAMP_OUTER_ADJUST 档
+                adjust = (batt_change > 0) ? PEAK_DAMP_OUTER_ADJUST : -PEAK_DAMP_OUTER_ADJUST;
+            }
+
             int old = battery_fan_level;
             battery_fan_level += adjust;
             battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
+            skip_delta = 1;
             write_log("过冲抑制 %+d (变=%d/5s) %d→%d",
                       adjust, batt_change, old, battery_fan_level);
         }
     }
 
-    // 根据与基准温度的偏差计算档位调整量
-    int diff = batt - BATT_BASELINE;
-    int delta = 0;
-
-    if (diff > 0) {
-        if      (diff <= BATT_ZONE_1) delta = 0;   // ≤0.7°C 死区
-        else if (diff <= BATT_ZONE_2) delta = 1;   // 0.7~2°C → +1
-        else                          delta = 2;   // >2°C   → +2
-    } else if (diff < 0) {
-        int abs_diff = -diff;
-        if      (abs_diff <= BATT_ZONE_1) delta = 0;   // ≤0.7°C 死区
-        else if (abs_diff <= BATT_ZONE_2) delta = -1;  // 0.7~2°C → -1
-        else                              delta = -2;  // >2°C   → -2
-    }
-
-    if (delta != 0) {
+    // ---- 应用常规升降档（仅当未被豁免/反补跳过时） ----
+    if (delta != 0 && !skip_delta) {
         int old = battery_fan_level;
-        int abs_diff = (diff > 0) ? diff : -diff;
-
-        // ----- 温度变化趋势检测（融合峰值时间检测）-----
-        // 基准 2°C 内：趋势反向即豁免（原有逻辑）
-        // 超过 2°C：仅当单次变动 >0.5°C 才豁免（严格模式，防止远偏离时不响应）
-        if (last_batt_reading >= 0) {
-            int batt_change = batt - last_batt_reading;
-            int should_exempt = 0;
-
-            if (abs_diff <= BATT_ZONE_2) {
-                // 基准 2°C 以内：趋势反向即豁免
-                if ((delta > 0 && batt < last_batt_reading) ||
-                    (delta < 0 && batt > last_batt_reading)) {
-                    should_exempt = 1;
-                }
-            } else {
-                // 超过 2°C：仅单次变动超过 PEAK_DAMP_THRESHOLD 才豁免
-                int abs_change = (batt_change > 0) ? batt_change : -batt_change;
-                if (abs_change > PEAK_DAMP_THRESHOLD &&
-                    ((delta > 0 && batt < last_batt_reading) ||
-                     (delta < 0 && batt > last_batt_reading))) {
-                    should_exempt = 1;
-                }
-            }
-
-            // 应用豁免（最多 OVERRIDE_MAX 次连续豁免）
-            if (should_exempt) {
-                if (trend_override < OVERRIDE_MAX) {
-                    int first = (trend_override == 0);
-                    trend_override++;
-                    delta = 0;
-                    if (first && old > LEVEL_MIN && old < LEVEL_MAX)
-                        write_log("趋势豁免 %d→%d (上限%d)",
-                                  old, battery_fan_level, OVERRIDE_MAX);
-                } else {
-                    trend_override = 0;
-                }
-            } else {
-                trend_override = 0;
-            }
-        }
-
-        if (delta != 0) {
-            prev_batt_temp = batt;
-            battery_fan_level += delta;
-            battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
-
-            write_log("电池 %d.%d°C 偏%+d 调%+d %d→%d",
-                      batt / 10, batt % 10, diff, delta, old, battery_fan_level);
-        } else {
-            prev_batt_temp = batt;
-        }
-    } else {
-        // 死区内或恰好等于基准 → 记录温度但不下调
-        prev_batt_temp = batt;
+        battery_fan_level += delta;
+        battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
+        write_log("电池 %d.%d°C 偏%+d 调%+d %d→%d",
+                  batt / 10, batt % 10, diff, delta, old, battery_fan_level);
     }
 
-    // 更新本轮读数为下次趋势检测 + 峰值抑制的对比基准
+    // 更新温度记录
+    prev_batt_temp = batt;
     last_batt_reading = batt;
 }
 
@@ -878,7 +883,6 @@ static void emergency_intervention(void) {
                   cpu_now / 10, cpu_now % 10,
                   t / 10, t % 10);
 
-        cooldown_counter = COOLDOWN_CYCLES;
         emergency_level = new_level;
     }
 
