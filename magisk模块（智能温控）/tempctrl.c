@@ -113,6 +113,23 @@ static int DISCONNECT_RESET_SEC = 60;   // 断联超时秒数（可配置）
 // --- CPU 滤波系数（百分比，0~100，默认 25=α=0.25）---
 static int CPU_FILTER_ALPHA = 25;
 
+// --- 趋势豁免上限（可配置）---
+// 温度趋势反向时最多连续豁免次数，超过后强制执行
+static int OVERRIDE_MAX = 6;
+
+// --- 峰值过冲抑制阈值（0.1°C，可配置）---
+// 基准 2°C 内单次变动超过此值 → 反向补偿一档
+static int PEAK_DAMP_THRESHOLD = 3;
+
+// --- 初始档位计算参数（可配置）---
+// 启动时根据 (当前温度 - INIT_TEMP_OFFSET) / INIT_DIVISOR 计算初始档位
+static int INIT_DIVISOR = 10;
+static int INIT_TEMP_OFFSET = 350;   // 初始档位的基准温度，默认同 BATT_BASELINE
+
+// --- 状态文件超时（秒，可配置）---
+// 模块最后一次写文件超过此秒数 → 判死
+static int STATUS_TIMEOUT = 16;
+
 // --- 日志路径（默认根据二进制名自动生成，可由 profile.conf 覆盖）---
 static char log_file_path[256] = "";
 
@@ -177,6 +194,11 @@ static void load_config(const char *path) {
         else if (strcmp(key, "COOLDOWN_CYCLES") == 0)      COOLDOWN_CYCLES    = clamp(val, 0, 100);
         else if (strcmp(key, "DISCONNECT_RESET_SEC") == 0) DISCONNECT_RESET_SEC = clamp(val, 10, 600);
         else if (strcmp(key, "CPU_FILTER_ALPHA") == 0)     CPU_FILTER_ALPHA   = clamp(val, 1, 100);
+        else if (strcmp(key, "OVERRIDE_MAX") == 0)         OVERRIDE_MAX       = clamp(val, 0, 20);
+        else if (strcmp(key, "PEAK_DAMP_THRESHOLD") == 0)  PEAK_DAMP_THRESHOLD = clamp(val, 1, 10);
+        else if (strcmp(key, "INIT_DIVISOR") == 0)         INIT_DIVISOR       = clamp(val, 1, 50);
+        else if (strcmp(key, "INIT_TEMP_OFFSET") == 0)     INIT_TEMP_OFFSET   = clamp(val, 200, 500);
+        else if (strcmp(key, "STATUS_TIMEOUT") == 0)       STATUS_TIMEOUT     = clamp(val, 5, 60);
         else if (strcmp(key, "LOG_FILE") == 0) {
             // 直接从 val_str 读取字符串路径
             char *v = val_str;
@@ -278,7 +300,6 @@ static time_t app_dead_since = 0;      // App 失联起始时间戳
 // 同时读取 BLE=0/1 获知 BLE 连接状态
 static char status_file_path[512] = "";
 static int app_ble_connected = 0;
-#define STATUS_TIMEOUT          16      // 状态文件 mtime 超时判死（秒）
 
 // ======================== 辅助函数 ========================
 
@@ -396,18 +417,55 @@ static int read_battery_temp(void) {
 }
 
 /**
+ * 缓存已发现的 CPU 温度 zone（首次全量扫描后记录）
+ */
+#define CPU_ZONE_MAX_CACHE 64
+static int cpu_zone_cache[CPU_ZONE_MAX_CACHE];
+static int cpu_zone_count = 0;
+static int cpu_zone_scanned = 0;
+
+/**
  * 读取 CPU 最高温度，返回 0.1°C（如 753 = 75.3°C）
- * 扫描 thermal_zone30~40，取最高值
+ *
+ * 首次调用：扫描 thermal_zone0~99，记录所有能读到有效值的 zone
+ * 后续调用：只扫描已记录的 zone 列表，取最高值
+ *
  * 原始值 m°C，除以 100 转 0.1°C
  * 全部失败返回 -1
  */
 static int read_cpu_temp_max(void) {
+    // 首次调用 → 全量扫描 thermal_zone0~99，记录可用 zone
+    if (!cpu_zone_scanned) {
+        char path[64];
+        for (int i = 0; i <= 99; i++) {
+            snprintf(path, sizeof(path),
+                     "/sys/class/thermal/thermal_zone%d/temp", i);
+            FILE *f = fopen(path, "r");
+            if (!f) continue;
+
+            int raw;
+            if (fscanf(f, "%d", &raw) != 1) {
+                fclose(f);
+                continue;
+            }
+            fclose(f);
+
+            if (raw <= 0 || raw > 150000) continue;
+
+            if (cpu_zone_count < CPU_ZONE_MAX_CACHE) {
+                cpu_zone_cache[cpu_zone_count++] = i;
+            }
+        }
+        cpu_zone_scanned = 1;
+        write_log("CPU_ZONE scanned %d viable zones (0-99)", cpu_zone_count);
+    }
+
+    // 后续调用 → 只扫描已记录的 zone
     int max_temp = -1;
     char path[64];
-
-    for (int i = 30; i <= 40; i++) {
+    for (int j = 0; j < cpu_zone_count; j++) {
         snprintf(path, sizeof(path),
-                 "/sys/class/thermal/thermal_zone%d/temp", i);
+                 "/sys/class/thermal/thermal_zone%d/temp", cpu_zone_cache[j]);
         FILE *f = fopen(path, "r");
         if (!f) continue;
 
@@ -568,7 +626,7 @@ static void reset_state(void) {
     int batt = read_battery_temp();
     if (batt >= 0) {
         // 基准温度 → 0 档，每 1°C 一档，范围 0~10
-        int init = (batt - BATT_BASELINE) / 10;
+        int init = (batt - INIT_TEMP_OFFSET) / INIT_DIVISOR;
         init = clamp(init, LEVEL_MIN, LEVEL_MAX);
         battery_fan_level = init;
         write_log("RESET battery=%d.%d init_lv=%d",
@@ -590,6 +648,7 @@ static void reset_state(void) {
     app_dead_since = 0;
     app_was_alive = 1;                 // 重置后视为 App 存活，等待检测
     app_ble_connected = 0;             // 重置 BLE 连接状态
+    cpu_zone_scanned = 0;              // 重新扫描 CPU 温度 zone
 
     // 清发送缓存，确保重置参数一定下发
     last_sent_valid = 0;
@@ -635,7 +694,7 @@ static void battery_control(void) {
         int batt_change = batt - last_batt_reading;
         int abs_change = (batt_change > 0) ? batt_change : -batt_change;
 
-        if (abs_diff <= BATT_ZONE_2 && abs_change > 3) {
+        if (abs_diff <= BATT_ZONE_2 && abs_change > PEAK_DAMP_THRESHOLD) {
             int adjust = (batt_change > 0) ? 1 : -1;
             int old = battery_fan_level;
             battery_fan_level += adjust;
@@ -697,7 +756,7 @@ static void battery_control(void) {
 
             // 应用豁免（最多 6 次连续豁免）
             if (should_exempt) {
-                if (trend_override < 6) {
+                if (trend_override < OVERRIDE_MAX) {
                     trend_override++;
                     delta = 0;
                     write_log("BATT trend reverse (override %d/6)",
@@ -804,7 +863,7 @@ static void init_fan_level(void) {
         return;
     }
 
-    int init = (batt - BATT_BASELINE) / 10;
+    int init = (batt - INIT_TEMP_OFFSET) / INIT_DIVISOR;
     init = clamp(init, LEVEL_MIN, LEVEL_MAX);
     battery_fan_level = init;
     prev_batt_temp = batt;    // 记录初始温度用于变化检测
