@@ -514,11 +514,11 @@ public class MainHook implements IXposedHookLoadPackage {
                     }
                 });
                 XposedBridge.log(TAG + " 已钩住 WaspWingManager 构造函数");
-            } catch (Exception e) {
-                XposedBridge.log(TAG + " 钩 WaspWingManager 失败: " + e.getMessage());
+            } catch (Throwable t) {
+                XposedBridge.log(TAG + " 钩 WaspWingManager 失败: " + t.getMessage());
             }
-        } catch (Exception e) {
-            XposedBridge.log(TAG + " 钩 B6ExperimentalActivity 失败: " + e.getMessage());
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + " 钩 B6ExperimentalActivity 失败: " + t.getMessage());
         }
 
         // ========== 广播接收器注册（Application.onCreate 时机） ==========
@@ -532,8 +532,8 @@ public class MainHook implements IXposedHookLoadPackage {
                     startPeriodicStatusWrite();  // 启动 5 秒定时写入 status 文件
                 }
             });
-        } catch (Exception e) {
-            XposedBridge.log(TAG + " 钩 Application.onCreate 失败: " + e.getMessage());
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + " 钩 Application.onCreate 失败: " + t.getMessage());
         }
     }
 }
