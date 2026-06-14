@@ -4,9 +4,10 @@
 飞智 B6X 散热器开发者工具增强项目。**Android 16 BLE 修复已完成**，智能温控 v2.0 开发中。
 
 ### v2.0 概况
-- 通信：~~FIFO~~ → 已废弃，改用 `pgrep` 检测 App 进程存活
+- 通信：~~FIFO~~ → 已废弃，改用 status 文件 mtime + pgrep 双重检测
 - 控制：C 守护程序每 5 秒决策 → `am broadcast` → LSPosed 模块 → `WaspWingManager.setRunMode()` → BLE 指令
-- 配置：所有阈值通过 `profile.conf` 运行时配置，支持 mtime 热重载
+- 配置：所有阈值通过 `profile.conf` 运行时配置，支持 mtime 热重载（`CONFIG_ENABLED=0` 可跳过）
+- 档位：1~12 级，使用查表法，趋势豁免+峰值反补合并逻辑
 - 部署：Magisk/KSU 模块（`service.sh` 复制到 `/data/local/tmp/` 绕过 noexec）
 
 ## 工作目录
@@ -45,6 +46,13 @@
 | UI 持续显示"扫描中" | 更新 `_connectLiveData` 和 `_waspWingInfo` | ✅ |
 | GATT 服务发现不触发 | 强制 `checkBluetoothPermission()` 返回 true | ✅ |
 | 智能温控模式闪烁 | 去掉 `convertFromDevice` 提前创建 WaspWingInfo | ✅ |
+
+## 编译注意事项
+- **C 守护程序必须使用 GitHub Actions（NDK）编译**，不要在手机上用 Termux 编译
+  - Termux 的 `clang -static` 链接 Termux 的 libc，非 Android libc，PT_TLS 段无法正确运行
+  - 仅 NDK 的 `aarch64-linux-android21-clang -static -O2` 能产生正确的二进制
+- CI 自动构建 C 二进制 + LSPosed 模块 APK，产物在 Actions Artifacts 下载
+- `patch_tls.py` 仅对 NDK 静态编译有效，Termux 编译修复后仍不可靠
 
 ## 工具位置
 - `baksmali.jar` → `修复历程/修复过程1.1/baksmali.jar`
