@@ -117,9 +117,15 @@ static int CPU_FILTER_ALPHA = 20;
 // 温度趋势反向时最多连续豁免次数，超过后强制执行
 static int OVERRIDE_MAX = 8;
 
-// --- 峰值过冲抑制阈值（0.1°C，可配置）---
-// 基准 2°C 内单次变动超过此值 → 反向补偿一档
-static int PEAK_DAMP_THRESHOLD = 4;
+// --- 峰值过冲抑制（可配置）---
+// PEAK_DAMP_THRESHOLD：2°C 外趋势豁免触发阈值
+// PEAK_DAMP_INNER_THRESHOLD：2°C 内反补触发阈值，超此值反补 PEAK_DAMP_INNER_ADJUST 档
+// PEAK_DAMP_OUTER_THRESHOLD：2°C 外反补触发阈值，超此值反补 PEAK_DAMP_OUTER_ADJUST 档
+static int PEAK_DAMP_THRESHOLD      = 3;
+static int PEAK_DAMP_INNER_THRESHOLD = 5;
+static int PEAK_DAMP_OUTER_THRESHOLD = 3;
+static int PEAK_DAMP_INNER_ADJUST    = 2;
+static int PEAK_DAMP_OUTER_ADJUST    = 1;
 
 // --- 初始档位计算参数（可配置）---
 // 启动时根据 (当前温度 - INIT_TEMP_OFFSET) / INIT_DIVISOR 计算初始档位
@@ -152,7 +158,7 @@ static inline int clamp(int val, int lo, int hi);
 static void load_config(const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) {
-        write_log("CONFIG cannot open %s", path);
+        write_log("配置 无法打开 %s", path);
         return;
     }
 
@@ -195,7 +201,11 @@ static void load_config(const char *path) {
         else if (strcmp(key, "DISCONNECT_RESET_SEC") == 0) DISCONNECT_RESET_SEC = clamp(val, 10, 600);
         else if (strcmp(key, "CPU_FILTER_ALPHA") == 0)     CPU_FILTER_ALPHA   = clamp(val, 1, 100);
         else if (strcmp(key, "OVERRIDE_MAX") == 0)         OVERRIDE_MAX       = clamp(val, 0, 20);
-        else if (strcmp(key, "PEAK_DAMP_THRESHOLD") == 0)  PEAK_DAMP_THRESHOLD = clamp(val, 1, 10);
+        else if (strcmp(key, "PEAK_DAMP_THRESHOLD") == 0)      PEAK_DAMP_THRESHOLD      = clamp(val, 1, 10);
+        else if (strcmp(key, "PEAK_DAMP_INNER_THRESHOLD") == 0) PEAK_DAMP_INNER_THRESHOLD = clamp(val, 1, 10);
+        else if (strcmp(key, "PEAK_DAMP_OUTER_THRESHOLD") == 0) PEAK_DAMP_OUTER_THRESHOLD = clamp(val, 1, 10);
+        else if (strcmp(key, "PEAK_DAMP_INNER_ADJUST") == 0)    PEAK_DAMP_INNER_ADJUST    = clamp(val, 1, 3);
+        else if (strcmp(key, "PEAK_DAMP_OUTER_ADJUST") == 0)    PEAK_DAMP_OUTER_ADJUST    = clamp(val, 1, 3);
         else if (strcmp(key, "INIT_DIVISOR") == 0)         INIT_DIVISOR       = clamp(val, 1, 50);
         else if (strcmp(key, "INIT_TEMP_OFFSET") == 0)     INIT_TEMP_OFFSET   = clamp(val, 200, 500);
         else if (strcmp(key, "STATUS_TIMEOUT") == 0)       STATUS_TIMEOUT     = clamp(val, 5, 60);
@@ -218,7 +228,7 @@ static void load_config(const char *path) {
     }
     fclose(f);
 
-    write_log("CONFIG loaded %d params from %s", loaded, path);
+    write_log("配置 已加载 %d 项 %s", loaded, path);
 }
 
 /**
@@ -304,18 +314,27 @@ static int app_ble_connected = 0;
 // ======================== 辅助函数 ========================
 
 /**
- * 写入日志到 /cache/tempctrl.log
+ * 写入日志（自动滚动：超 10KB 后备份为 .old 重新开始）
+ * 日期格式：日+时间，无年月（例 "14 22:30:16"）
  */
 static void write_log(const char *fmt, ...) {
+    // 大小检查与滚动
+    struct stat st;
+    if (stat(log_file_path, &st) == 0 && st.st_size > 10240) {
+        char old_path[384];
+        snprintf(old_path, sizeof(old_path), "%s.old", log_file_path);
+        remove(old_path);
+        rename(log_file_path, old_path);
+    }
+
     FILE *f = fopen(log_file_path, "a");
     if (!f) return;
 
-    // 时间戳
+    // 时间戳（仅日+时间）
     time_t now = time(NULL);
     struct tm *tm = localtime(&now);
-    char ts[32];
-    strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", tm);
-
+    char ts[24];
+    strftime(ts, sizeof(ts), "%d %H:%M:%S", tm);
     fprintf(f, "[%s] ", ts);
 
     va_list args;
@@ -372,9 +391,9 @@ static void create_status_file(void) {
     if (f) {
         fclose(f);
         chmod(status_file_path, 0666);
-        write_log("STATUS file ready at %s", status_file_path);
+        write_log("状态文件 就绪 %s", status_file_path);
     } else {
-        write_log("STATUS cannot create %s", status_file_path);
+        write_log("状态文件 创建失败 %s", status_file_path);
     }
 }
 
@@ -457,7 +476,7 @@ static int read_cpu_temp_max(void) {
             }
         }
         cpu_zone_scanned = 1;
-        write_log("CPU_ZONE scanned %d viable zones (0-99)", cpu_zone_count);
+        write_log("CPU扫描 %d 个有效 zone", cpu_zone_count);
     }
 
     // 后续调用 → 只扫描已记录的 zone
@@ -629,11 +648,11 @@ static void reset_state(void) {
         int init = (batt - INIT_TEMP_OFFSET) / INIT_DIVISOR;
         init = clamp(init, LEVEL_MIN, LEVEL_MAX);
         battery_fan_level = init;
-        write_log("RESET battery=%d.%d init_lv=%d",
+        write_log("重置 电池=%d.%d 初始档=%d",
                   batt / 10, batt % 10, battery_fan_level);
     } else {
         battery_fan_level = 0;
-        write_log("RESET batt_err default_lv=0");
+        write_log("重置 电池读取失败 默认档=0");
     }
 
     cooldown_counter = 0;
@@ -691,17 +710,17 @@ static void battery_control(void) {
         int abs_change = (batt_change > 0) ? batt_change : -batt_change;
         int adjust = 0;
 
-        if (abs_diff <= BATT_ZONE_2 && abs_change > 5) {
-            adjust = (batt_change > 0) ? 2 : -2;   // 2°内急变→反补2档
-        } else if (abs_diff > BATT_ZONE_2 && abs_change > 3) {
-            adjust = (batt_change > 0) ? 1 : -1;   // 2°外急变→反补1档
+        if (abs_diff <= BATT_ZONE_2 && abs_change > PEAK_DAMP_INNER_THRESHOLD) {
+            adjust = (batt_change > 0) ? PEAK_DAMP_INNER_ADJUST : -PEAK_DAMP_INNER_ADJUST;
+        } else if (abs_diff > BATT_ZONE_2 && abs_change > PEAK_DAMP_OUTER_THRESHOLD) {
+            adjust = (batt_change > 0) ? PEAK_DAMP_OUTER_ADJUST : -PEAK_DAMP_OUTER_ADJUST;
         }
 
         if (adjust != 0) {
             int old = battery_fan_level;
             battery_fan_level += adjust;
             battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
-            write_log("BATT peak-damp %+d (chg=%d/5s) lv %d→%d",
+            write_log("过冲抑制 %+d (变=%d/5s) %d→%d",
                       adjust, batt_change, old, battery_fan_level);
         }
     }
@@ -754,7 +773,7 @@ static void battery_control(void) {
                     trend_override++;
                     delta = 0;
                     if (old > LEVEL_MIN && old < LEVEL_MAX)
-                        write_log("BATT trend reverse (override %d/%d)",
+                        write_log("趋势豁免(%d/%d)",
                                   trend_override, OVERRIDE_MAX);
                 } else {
                     trend_override = 0;
@@ -769,7 +788,7 @@ static void battery_control(void) {
             battery_fan_level += delta;
             battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
 
-            write_log("BATT batt=%d.%d diff=%+d delta=%+d lv %d→%d",
+            write_log("电池 %d.%d°C 偏%+d 调%+d %d→%d",
                       batt / 10, batt % 10, diff, delta, old, battery_fan_level);
         } else {
             prev_batt_temp = batt;
@@ -825,7 +844,7 @@ static void emergency_intervention(void) {
     // 等级变化处理
     if (new_level != emergency_level) {
         int old = emergency_level;
-        write_log("EMERG lv %d→%d cpu=%d.%d(%d.%d)",
+        write_log("紧急 %d→%d cpu=%d.%d(加权%d.%d)",
                   old, new_level,
                   cpu_now / 10, cpu_now % 10,
                   t / 10, t % 10);
@@ -853,7 +872,7 @@ static void init_fan_level(void) {
     int batt = read_battery_temp();
     if (batt < 0) {
         battery_fan_level = 0;
-        write_log("INIT batt_err default_lv=0");
+        write_log("启动 电池读取失败 默认档=0");
         return;
     }
 
@@ -863,7 +882,7 @@ static void init_fan_level(void) {
     prev_batt_temp = batt;    // 记录初始温度用于变化检测
     last_batt_reading = batt; // 记录初始温度用于趋势判断
 
-    write_log("INIT batt=%d.%d lv=%d", batt / 10, batt % 10, battery_fan_level);
+    write_log("启动 电池=%d.%d°C 档=%d", batt / 10, batt % 10, battery_fan_level);
 }
 
 // ======================== 主循环 ========================
@@ -889,7 +908,7 @@ static void main_loop(void) {
             if (st.st_mtime != config_mtime) {
                 load_config(config_path);
                 config_mtime = st.st_mtime;
-                write_log("CONFIG hot-reloaded (mtime changed)");
+                write_log("配置 热重载 (mtime变化)");
             }
         }
     }
@@ -939,7 +958,7 @@ static void main_loop(void) {
                 battery_fan_level = EMERG_FORCED_1;
         } else if (prev_emerg_level != emergency_level) {
             // 只在紧急等级刚切换时打一次，避免每 5 秒刷屏
-            write_log("EMERG skip cap: batt=%d.%d > upshift=%d.%d",
+            write_log("紧急 跳过降档: %d.%d°C > 升阈%d.%d°C",
                       batt / 10, batt % 10,
                       upshift_threshold / 10, upshift_threshold % 10);
         }
@@ -974,7 +993,7 @@ int main(int argc, char *argv[]) {
 
     // --- 初始化档位 ---
     init_fan_level();
-    write_log("=== tempctrl STARTED (level=%d) ===", battery_fan_level);
+    write_log("=== 智能温控启动(档位%d) ===", battery_fan_level);
 
     // --- 等待模块就绪（进程存活 + status 文件有内容） ---
     // status 文件由模块在 Application.onCreate 中写入 "BLE=0/1\n"，
@@ -998,7 +1017,7 @@ int main(int argc, char *argv[]) {
         // 降低日志频率：每 30 秒（6 轮）打一次
         static int wait_noise = 0;
         if (++wait_noise % 6 == 1)
-            write_log("WAIT module not ready, retry in 5s...");
+            write_log("等待 模块未就绪，5秒后重试...");
         sleep(5);
     }
     if (!running) goto exit;
@@ -1013,7 +1032,7 @@ int main(int argc, char *argv[]) {
     // 强制首次下发
     last_sent_valid = 0;
     apply_level(battery_fan_level);
-    write_log("ENTER work mode");
+    write_log("进入工作模式");
 
     // ---- 主控制循环：每 5 秒一次 ----
     while (running) {
@@ -1028,7 +1047,7 @@ int main(int argc, char *argv[]) {
             if (app_was_alive) {
                 app_dead_since = time(NULL);
                 app_was_alive = 0;
-                write_log("APP gone, waiting for reconnect...");
+                write_log("App 消失，等待重连...");
             }
 
             // 等待 App 复活的循环
@@ -1037,17 +1056,17 @@ int main(int argc, char *argv[]) {
                 if (is_app_alive()) {
                     time_t elapsed = time(NULL) - app_dead_since;
                     if (elapsed >= DISCONNECT_RESET_SEC) {
-                        write_log("WAKE app back after %lds (≥%ds), resetting",
+                        write_log("App 恢复(断%lds≥%ds) 重置状态",
                                   (long)elapsed, DISCONNECT_RESET_SEC);
                         reset_state();
                     } else {
-                        write_log("WAKE app back after %lds, continuing",
+                        write_log("App 恢复(断%lds) 继续",
                                   (long)elapsed);
                     }
                     app_was_alive = 1;
                     last_sent_valid = 0;          // 强制重发当前档位
                     apply_level(battery_fan_level);
-                    write_log("ENTER work mode (reconnect)");
+                    write_log("进入工作模式(重连)");
                     break;
                 }
             }
@@ -1056,7 +1075,7 @@ int main(int argc, char *argv[]) {
             app_was_alive = 1;
             last_sent_valid = 0;
             apply_level(battery_fan_level);
-            write_log("ENTER work mode (app revived)");
+            write_log("进入工作模式(恢复)");
         }
 
         // 逐秒睡眠（可被信号中断）
@@ -1066,6 +1085,6 @@ int main(int argc, char *argv[]) {
     }
 
 exit:
-    write_log("=== tempctrl EXIT ===");
+    write_log("=== 智能温控退出 ===");
     return 0;
 }
