@@ -412,14 +412,11 @@ public class MainHook implements IXposedHookLoadPackage {
         // SDK 的 AbstractDataInteractionController.runFetchLoop 在命令队列为空时
         // 无限循环 peek()，无协程挂起点，导致 Dispatchers.Default 线程吃满一个核心。
         // 修复：用带 sleep(100ms) 的包装队列替换原 ConcurrentLinkedQueue。
+        // 注意：钩子挂在具体子类 WaspWingDataInteractionController 上，而非抽象父类。
         try {
-            Class<?> absDataCtrl = lpparam.classLoader.loadClass(
-                    "com.flydigi.sdk.bluetooth.AbstractDataInteractionController");
-
-            XposedHelpers.findAndHookMethod(absDataCtrl, "<init>",
+            XposedHelpers.findAndHookMethod(wingCtrl, "<init>",
                     Context.class,
                     lpparam.classLoader.loadClass("com.flydigi.sdk.bluetooth.DeviceFilter"),
-                    int.class,
                     new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
@@ -468,7 +465,7 @@ public class MainHook implements IXposedHookLoadPackage {
                             }
                         }
                     });
-            XposedBridge.log(TAG + " 已钩住 AbstractDataInteractionController 构造"
+            XposedBridge.log(TAG + " 已钩住 WaspWingDataInteractionController 构造"
                     + "（修复 runFetchLoop CPU 满载）");
         } catch (Exception e) {
             XposedBridge.log(TAG + " 钩 AbstractDataInteractionController 失败: "

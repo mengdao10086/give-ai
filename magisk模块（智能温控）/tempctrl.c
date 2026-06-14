@@ -111,11 +111,11 @@ static int COOLDOWN_CYCLES = 4;     // 每次调整后冷却 20 秒（4×5s）
 static int DISCONNECT_RESET_SEC = 60;   // 断联超时秒数（可配置）
 
 // --- CPU 滤波系数（百分比，0~100，默认 25=α=0.25）---
-static int CPU_FILTER_ALPHA = 25;
+static int CPU_FILTER_ALPHA = 20;
 
 // --- 趋势豁免上限（可配置）---
 // 温度趋势反向时最多连续豁免次数，超过后强制执行
-static int OVERRIDE_MAX = 6;
+static int OVERRIDE_MAX = 8;
 
 // --- 峰值过冲抑制阈值（0.1°C，可配置）---
 // 基准 2°C 内单次变动超过此值 → 反向补偿一档
@@ -971,8 +971,9 @@ int main(int argc, char *argv[]) {
     write_log("=== tempctrl STARTED (level=%d) ===", battery_fan_level);
 
     // --- 等待 App 进程出现 ---
+    // 初始等待仅用 pgrep（status 文件此时刚创建，mtime 不反映模块状态）
     while (running) {
-        if (is_app_alive()) {
+        if (system("pgrep -f 'com.flydigi.waspwing.experimental' >/dev/null 2>&1") == 0) {
             write_log("WAIT app detected, entering work mode");
             break;
         }
@@ -980,6 +981,10 @@ int main(int argc, char *argv[]) {
         sleep(5);
     }
     if (!running) goto exit;
+
+    // 等模块初始化（BroadcastReceiver + 状态文件写入就绪）
+    write_log("WAIT waiting for module init...");
+    sleep(3);
 
     // --- 进入工作模式 ---
     app_was_alive = 1;
