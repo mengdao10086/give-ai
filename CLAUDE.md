@@ -22,6 +22,12 @@
 模块类：`com.example.waspwingtempctrl.MainHook`
 模块源码：`lsp模块（apk修复+温控接口）/app/src/main/java/com/example/waspwingtempctrl/MainHook.java`
 
+## 分析 app 内部行为时的流程
+
+1. **先不要猜。** 先在 `参考资料/` 目录里搜索关键词——这里已经有完整的 smali 反编译输出
+2. 用 `Grep` 扫整个项目（包括 `参考资料/`），确认有没有现成的分析结果
+3. 如果 `参考资料/` 没有，再考虑加诊断钩子或实时分析
+
 ## 关键文件索引
 | 文件 | 说明 |
 |------|------|

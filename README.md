@@ -118,7 +118,7 @@ python3 patch_tls.py tempctrl   # 修复 PT_TLS 对齐
 
 | 项目 | 类型 | 说明 |
 |------|------|------|
-| DefaultDispatch 线程死循环 | 🔍 待分析 | App 的 `experimentalRunModeValue` 判断循环导致 RxJava computation 线程吃满一个核心，可能需在模块中打断循环 |
+| DefaultDispatch 线程死循环 | ✅ 已修复 | `runFetchLoop` 空队列忙等，模块中替换队列为 sleep(100ms) 包装 |
 | UI 模式选择器闪烁（固定功率时圆点空白） | 🟢 低 | `experimentalRunModeValue` 覆写已修复智能温控模式闪烁，但固定功率模式仍显示异常 |
 
 ---

@@ -9,6 +9,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 
 import java.io.FileOutputStream;
+import java.util.ConcurrentLinkedQueue;
+import java.util.Iterator;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -406,7 +408,74 @@ public class MainHook implements IXposedHookLoadPackage {
             XposedBridge.log(TAG + " 钩诊断失败: " + e.getMessage());
         }
 
-        // ========== 智能温控唤醒 #5：B6ExperimentalActivity.onResume ==========
+        // ========== 修复 DefaultDispatcher 线程 100% CPU（runFetchLoop 空队列忙等） ==========
+        // SDK 的 AbstractDataInteractionController.runFetchLoop 在命令队列为空时
+        // 无限循环 peek()，无协程挂起点，导致 Dispatchers.Default 线程吃满一个核心。
+        // 修复：用带 sleep(100ms) 的包装队列替换原 ConcurrentLinkedQueue。
+        try {
+            Class<?> absDataCtrl = lpparam.classLoader.loadClass(
+                    "com.flydigi.sdk.bluetooth.AbstractDataInteractionController");
+
+            XposedHelpers.findAndHookMethod(absDataCtrl, "<init>",
+                    Context.class,
+                    lpparam.classLoader.loadClass("com.flydigi.sdk.bluetooth.DeviceFilter"),
+                    int.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            try {
+                                Object ctrl = param.thisObject;
+                                Object originalQueue = XposedHelpers.getObjectField(
+                                        ctrl, "mConcurrentLinkedQueue");
+
+                                // 包装 ConcurrentLinkedQueue：peek 空时 sleep 100ms
+                                ConcurrentLinkedQueue<Object> wrapped =
+                                        new ConcurrentLinkedQueue<Object>() {
+                                    @Override
+                                    public Object peek() {
+                                        Object result = super.peek();
+                                        if (result == null) {
+                                            try {
+                                                Thread.sleep(100);
+                                            } catch (InterruptedException e) {
+                                                Thread.currentThread().interrupt();
+                                            }
+                                        }
+                                        return result;
+                                    }
+                                };
+
+                                // 把原队列中已有数据搬过来
+                                if (originalQueue instanceof ConcurrentLinkedQueue) {
+                                    ConcurrentLinkedQueue<?> src =
+                                            (ConcurrentLinkedQueue<?>) originalQueue;
+                                    while (true) {
+                                        Object item = src.poll();
+                                        if (item == null) break;
+                                        wrapped.add(item);
+                                    }
+                                }
+
+                                // volatile 字段，替换后运行中的协程线程立即可见
+                                XposedHelpers.setObjectField(ctrl,
+                                        "mConcurrentLinkedQueue", wrapped);
+
+                                XposedBridge.log(TAG
+                                        + " runFetchLoop 队列已替换（空等 sleep 100ms）");
+                            } catch (Exception e) {
+                                XposedBridge.log(TAG
+                                        + " runFetchLoop 队列替换失败: " + e.getMessage());
+                            }
+                        }
+                    });
+            XposedBridge.log(TAG + " 已钩住 AbstractDataInteractionController 构造"
+                    + "（修复 runFetchLoop CPU 满载）");
+        } catch (Exception e) {
+            XposedBridge.log(TAG + " 钩 AbstractDataInteractionController 失败: "
+                    + e.getMessage());
+        }
+
+        // ========== 智能温控唤醒：B6ExperimentalActivity.onResume ==========
         try {
             Class<?> b6ExpAct = lpparam.classLoader.loadClass(
                     "com.flydigi.waspwing.experimental.B6ExperimentalActivity");
