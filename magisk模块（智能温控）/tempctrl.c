@@ -668,14 +668,10 @@ static void reset_state(void) {
  *   偏差 0.7~2°C → ±1 档
  *   偏差 >2°C    → ±2 档
  *
- * 温度读数未变化时跳过升降档（冷却期倒计时正常进行）。
+ * 温度读数未变化时跳过升降档。
+ * 已去除冷却期（冷却期原用于延迟升降档，现改为随到随调）。
  */
 static void battery_control(void) {
-    // 冷却期倒计时（始终进行，不影响紧急等级等其他逻辑）
-    if (cooldown_counter > 0) {
-        cooldown_counter--;
-    }
-
     int batt = read_battery_temp();
     if (batt < 0) {
         return;
@@ -686,30 +682,28 @@ static void battery_control(void) {
         return;
     }
 
-    // ---- 峰值过冲抑制：基准 2°C 内单次变动超过 0.3°C → 反向补偿一档 ----
-    // 此逻辑独立于冷却期，作为安全机制始终执行
-    // 急升 → 加压档（+1），急降 → 减压档（-1），抑制温度过冲/过冷
+    // ---- 峰值过冲抑制：温度快速变化时反向补偿，抑制过冲/过冷 ----
+    // 基准 2°C 内：单次变动 >0.5°C（5 单位）→ 反向补偿 2 档
+    // 基准 2°C 外：单次变动 >0.3°C（3 单位）→ 反向补偿 1 档
     if (last_batt_reading >= 0) {
         int abs_diff = (batt > BATT_BASELINE) ? (batt - BATT_BASELINE) : (BATT_BASELINE - batt);
         int batt_change = batt - last_batt_reading;
         int abs_change = (batt_change > 0) ? batt_change : -batt_change;
+        int adjust = 0;
 
-        if (abs_diff <= BATT_ZONE_2 && abs_change > PEAK_DAMP_THRESHOLD) {
-            int adjust = (batt_change > 0) ? 1 : -1;
+        if (abs_diff <= BATT_ZONE_2 && abs_change > 5) {
+            adjust = (batt_change > 0) ? 2 : -2;   // 2°内急变→反补2档
+        } else if (abs_diff > BATT_ZONE_2 && abs_change > 3) {
+            adjust = (batt_change > 0) ? 1 : -1;   // 2°外急变→反补1档
+        }
+
+        if (adjust != 0) {
             int old = battery_fan_level;
             battery_fan_level += adjust;
             battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
-            cooldown_counter = COOLDOWN_CYCLES;
             write_log("BATT peak-damp %+d (chg=%d/5s) lv %d→%d",
                       adjust, batt_change, old, battery_fan_level);
         }
-    }
-
-    // 冷却期内不执行常规升降档（但峰值抑制已独立触发）
-    if (cooldown_counter > 0) {
-        last_batt_reading = batt;
-        prev_batt_temp = batt;
-        return;
     }
 
     // 根据与基准温度的偏差计算档位调整量
@@ -759,8 +753,9 @@ static void battery_control(void) {
                 if (trend_override < OVERRIDE_MAX) {
                     trend_override++;
                     delta = 0;
-                    write_log("BATT trend reverse (override %d/6)",
-                              trend_override);
+                    if (old > LEVEL_MIN && old < LEVEL_MAX)
+                        write_log("BATT trend reverse (override %d/%d)",
+                                  trend_override, OVERRIDE_MAX);
                 } else {
                     trend_override = 0;
                 }
@@ -773,7 +768,6 @@ static void battery_control(void) {
             prev_batt_temp = batt;
             battery_fan_level += delta;
             battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
-            cooldown_counter = COOLDOWN_CYCLES;
 
             write_log("BATT batt=%d.%d diff=%+d delta=%+d lv %d→%d",
                       batt / 10, batt % 10, diff, delta, old, battery_fan_level);
