@@ -11,14 +11,14 @@
 | 组件 | 路径 | 说明 | 状态 |
 |------|------|------|------|
 | **LSPosed 模块** | [lsp模块（apk修复+温控接口）/](lsp模块（apk修复+温控接口）/README.md) | 修复 Android 16 BLE Bug + 提供智能温控广播接口 | ✅ v1.0 已发布 |
-| **C 守护程序** | [magisk模块（智能温控）/](magisk模块（智能温控）/tempctrl.c) | pgrep 进程检测 + am broadcast 控制 | ⚙️ v2.0 开发中 |
+| **C 守护程序** | [magisk模块（智能温控）/](magisk模块（智能温控）/tempctrl.c) | 双重进程检测(pgrep+心跳文件) + am broadcast 控制 | ⚙️ v2.0 开发中 |
 
 ### LSPosed 模块功能
 
 - 修复 Android 16 (API 36) 上 `checkBluetoothPermission()` 返回 false 导致 BLE 无法连接的问题
 - 修复连接后扫描不停、ViewModel LiveData 不更新等 4 层 Bug
 - 提供 `com.flydigi.SET_TEMPERATURE` 广播接收器，支持 7 参数完整控制
-- tempctrl 通过 `pgrep` 检测进程存活，自动恢复控制
+- 模块每 5 秒写入 `tempctrl.status` 上报 BLE 连接状态 + 心跳，daemon 通过 pgrep + 文件 mtime 双重检测进程存活
 
 ### C 智能温控守护程序
 
@@ -26,10 +26,12 @@
 - 11 级档位（0~10），使用查表法（实测数据）
 - CPU 紧急干预（65/75/85°C 三级，带低通滤波 + 10°C 滞回）
 - 电池温度调档（基准 35°C，三级区间：死区/±1档/±2档）
-- 温度趋势判断：降温不升档、升温不降档（最多豁免 6 次）
+- 趋势豁免（融合峰值时间检测）：基准 2°C 内趋势反向即豁免，超过 2°C 仅变动 >0.5°C 时豁免
+- 峰值过冲抑制：基准 2°C 内单次变动 >0.3°C 时反向补偿一档
 - 温度未变化时跳过升降档，防止重复调整
 - 电池档位继承实际下发档位，紧急退出后挡位不暴跌
-- 通过 pgrep 检测 App 进程存活，自动恢复控制
+- 退出紧急降档验证：仅电池温度低于升档阈值时允许降档
+- 双重进程检测：pgrep + 状态文件 mtime 心跳（16 秒超时），任一判死即断联
 - 所有阈值可通过 profile.conf 运行时配置并热重载
 - 指令去重，避免散热器频繁切换
 
@@ -101,12 +103,12 @@ python3 patch_tls.py tempctrl   # 修复 PT_TLS 对齐
 | 任务 | 优先级 | 说明 |
 |------|--------|------|
 | 本地编译测试 | 🔴 高 | 在手机上用 Termux 编译 `tempctrl.c`，推送到手机测试 |
-| 应用进程检测与恢复 | 🟡 中 | tempctrl 每 5 秒通过 pgrep 检测 App 进程，失联时等待恢复并强制重发 |
+| 进程检测与恢复（双重检测） | 🟡 中 | pgrep + status 文件 mtime 16 秒超时，模块断写心跳后 daemon 能否正确判死并恢复 |
 | am broadcast 参数验证 | 🟡 中 | 确认 `windOC`/`coldOC`/`windLevel` 参数在真机上的效果 |
 | 档位映射验证 | 🟡 中 | 各档位风扇转速和制冷片强度是否与表格预期一致 |
 | 断联超时重置测试 | 🟡 中 | BLE 断开 >60 秒重连后，daemon 是否执行 `reset_state()` |
-| 断联超时重置测试 | 🟡 中 | BLE 断开 >60 秒重连后，daemon 是否执行 `reset_state()` |
 | Magisk 模块封装 | 🟢 低 | 将 `tempctrl` 二进制封装为 Magisk 模块，含 `service.sh` |
+| Status 文件 BLE 状态上报 | 🟡 中 | 模块每 5 秒写 BLE=0/1 到 status 文件，daemon 读取并响应 |
 
 ### CI 可改进
 
@@ -118,8 +120,7 @@ python3 patch_tls.py tempctrl   # 修复 PT_TLS 对齐
 | 项目 | 类型 | 说明 |
 |------|------|------|
 | DefaultDispatch 线程死循环 | 🔍 待分析 | App 的 `experimentalRunModeValue` 判断循环导致 RxJava computation 线程吃满一个核心，可能需在模块中打断循环 |
-| 退出紧急时挡位下降加验证 | ⚙️ 待实现 | 仅在电池温度低于升档阈值时才允许紧急退出时降档，防止 CPU 温度反弹 |
-| 电池温度峰值时间检测 | ⚙️ 待实现 | 计算峰值温度回到基准温度的时间，小于某阈值则反向变一档（抑制温度过冲） |
+| UI 模式选择器闪烁（固定功率时圆点空白） | 🟢 低 | `experimentalRunModeValue` 覆写已修复智能温控模式闪烁，但固定功率模式仍显示异常 |
 
 ---
 

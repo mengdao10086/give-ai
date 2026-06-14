@@ -8,6 +8,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 
+import java.io.FileOutputStream;
+
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -33,6 +35,7 @@ public class MainHook implements IXposedHookLoadPackage {
     private static Object capturedWaspWingMgr = null;  // 构造函数钩子捕获的实例
     private static int lastSetMode = 0;     // 上次 setRunMode 的 mode（用于 UI 闪烁修复）
     private static int lastSetColdOC = 0;   // 上次固定功率的 coldOC（用于 UI 闪烁修复）
+    private static boolean bleConnected = false;  // BLE 连接状态（写入 status 文件供 tempctrl 读取）
 
     // ========== 智能温控广播接收器（v2.0） ==========
     // 接收 tempctrl 发送的 am broadcast，调用 setRunMode 控制散热器
@@ -103,6 +106,38 @@ public class MainHook implements IXposedHookLoadPackage {
         }
     }
 
+    // ========== 状态文件写入（供 tempctrl 守护程序检测心跳 + BLE 状态） ==========
+    // tempctrl 通过 stat() 检查文件 mtime 判断进程存活，
+    // 通过读 "BLE=0/1" 获知 BLE 连接状态
+    private static final String STATUS_FILE = "/data/local/tmp/tempctrl.status";
+
+    private static void writeStatusFile() {
+        try {
+            FileOutputStream fos = new FileOutputStream(STATUS_FILE);
+            fos.write(("BLE=" + (bleConnected ? "1" : "0") + "\n").getBytes());
+            fos.close();
+        } catch (Exception e) {
+            XposedBridge.log(TAG + " 写入状态文件失败: " + e.getMessage());
+        }
+    }
+
+    private static void startPeriodicStatusWrite() {
+        Thread t = new Thread(() -> {
+            while (true) {
+                try {
+                    writeStatusFile();
+                    Thread.sleep(5000);
+                } catch (InterruptedException e) {
+                    break;
+                } catch (Exception e) {
+                    XposedBridge.log(TAG + " 状态写入异常: " + e.getMessage());
+                }
+            }
+        });
+        t.setDaemon(true);
+        t.start();
+    }
+
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         XposedBridge.log(TAG + " LoadPackage: " + lpparam.packageName);
@@ -130,9 +165,8 @@ public class MainHook implements IXposedHookLoadPackage {
                                 Object controller = param.thisObject;
                                 XposedHelpers.callMethod(controller, "stopScan");
                                 XposedHelpers.setBooleanField(controller, "inScanning", false);
-                                XposedBridge.log(TAG + " 控制器：扫描已停止");
-
-                                // BLE 已连接（tempctrl 通过 pgrep 检测，无需 FIFO）
+                                bleConnected = true;  // BLE 已连接，更新状态供 status 文件
+                                XposedBridge.log(TAG + " 控制器：扫描已停止，BLE 已连接");
                             } catch (Exception e) {
                                 XposedBridge.log(TAG + " 控制器修复异常: " + e.getMessage());
                             }
@@ -244,16 +278,17 @@ public class MainHook implements IXposedHookLoadPackage {
                     });
             XposedBridge.log(TAG + " 已钩住 checkBluetoothPermission（强制返回 true）");
 
-            // ===== BLE 断联检测：BluetoothGatt.disconnect → FIFO "0" =====
+            // ===== BLE 断联检测 =====
             XposedHelpers.findAndHookMethod(
                     BluetoothGatt.class, "disconnect",
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
-                            XposedBridge.log(TAG + " BLE 断联（tempctrl 通过 pgrep 检测）");
+                            bleConnected = false;  // 更新 BLE 状态（立即生效，5 秒内写入 status 文件）
+                            XposedBridge.log(TAG + " BLE 断联");
                         }
                     });
-            XposedBridge.log(TAG + " 已钩住 BluetoothGatt.disconnect → FIFO '0'");
+            XposedBridge.log(TAG + " 已钩住 BluetoothGatt.disconnect（状态标记）");
 
             // ===== 诊断钩子（调试用，保留） =====
 
@@ -428,6 +463,7 @@ public class MainHook implements IXposedHookLoadPackage {
                 protected void afterHookedMethod(MethodHookParam param) {
                     Context ctx = (Context) param.thisObject;
                     registerTemperatureReceiver(ctx);
+                    startPeriodicStatusWrite();  // 启动 5 秒定时写入 status 文件
                 }
             });
         } catch (Exception e) {

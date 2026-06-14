@@ -36,9 +36,9 @@
 //   5    智能温控(mode=0)   16°C      4000          auto       自此以下智能模式温度波动较大，紧急1-min
 //   4    智能温控(mode=0)   18°C      3400          auto
 //   3    固定功率(mode=1)    —        2900           80        低功耗1
-//   2    固定功率(mode=1)    —        2500           60        低功耗2
-//   1    固定功率(mode=1)    —        2200           40        低功耗3
-//   0    固定功率(mode=1)    —        2000           20        伪待机
+//   2    固定功率(mode=1)    —        2500           55        低功耗2
+//   1    固定功率(mode=1)    —        2200           30        低功耗3
+//   0    固定功率(mode=1)    —        2000           10        伪待机
 //
 // setRunMode 签名：
 //   setRunMode(mode, targetTemperature,
@@ -78,7 +78,7 @@ static const int TARGET_TEMP_TABLE[11] = {
 
 // 档位 → 固定功率制冷片强度，智能模式该项传 0（让散热器自行管理）
 static const int COLD_INTENSITY_TABLE[11] = {
-    20, 40, 60, 80, 0, 0, 0, 0, 0, 0, 190
+    10, 30, 55, 80, 0, 0, 0, 0, 0, 0, 190
 };
 
 // --- 制冷片强度范围 ---
@@ -273,6 +273,13 @@ static int last_windLevel = -1;
 static int app_was_alive = 0;          // 上次检测时 App 是否存活
 static time_t app_dead_since = 0;      // App 失联起始时间戳
 
+// --- 状态文件检测（模块心跳 + BLE 状态）---
+// 模块每 5 秒写入一次 status 文件，daemon 通过 mtime 判断进程是否活着
+// 同时读取 BLE=0/1 获知 BLE 连接状态
+static char status_file_path[512] = "";
+static int app_ble_connected = 0;
+#define STATUS_TIMEOUT          16      // 状态文件 mtime 超时判死（秒）
+
 // ======================== 辅助函数 ========================
 
 /**
@@ -306,6 +313,67 @@ static inline int clamp(int val, int lo, int hi) {
     if (val < lo) return lo;
     if (val > hi) return hi;
     return val;
+}
+
+// ======================== 状态文件（模块心跳 + BLE 状态） ========================
+
+/**
+ * 根据二进制名设定状态文件路径
+ * 例：tempctrl → /data/local/tmp/tempctrl.status
+ */
+static void set_default_status_path(void) {
+    char exe_path[512];
+    ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len > 0) {
+        exe_path[len] = '\0';
+        char *slash = strrchr(exe_path, '/');
+        if (slash) {
+            slash++;
+            snprintf(status_file_path, sizeof(status_file_path),
+                     "/data/local/tmp/%s.status", slash);
+            return;
+        }
+    }
+    // fallback
+    strncpy(status_file_path, "/data/local/tmp/tempctrl.status",
+            sizeof(status_file_path) - 1);
+}
+
+/**
+ * 创建（或触摸）状态文件，设 0666 权限
+ *
+ * 模块（App 进程）通过此文件向 daemon 发送 BLE 连接状态和心跳。
+ * daemon 创建后模块每 5 秒覆写一次 "BLE=0/1\n"。
+ * open("a") 不会截断已有内容，仅创建/更新时间戳。
+ */
+static void create_status_file(void) {
+    FILE *f = fopen(status_file_path, "a");
+    if (f) {
+        fclose(f);
+        chmod(status_file_path, 0666);
+        write_log("STATUS file ready at %s", status_file_path);
+    } else {
+        write_log("STATUS cannot create %s", status_file_path);
+    }
+}
+
+/**
+ * 读取状态文件中的 BLE 连接状态
+ * 纯内容读取，不过问 mtime（mtime 由 is_app_alive 检测）
+ * 读失败时不修改 app_ble_connected（保持旧值）
+ */
+static void read_status_ble(void) {
+    FILE *f = fopen(status_file_path, "r");
+    if (!f) return;
+
+    char line[64];
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "BLE=", 4) == 0) {
+            int val = atoi(line + 4);
+            app_ble_connected = val ? 1 : 0;
+        }
+    }
+    fclose(f);
 }
 
 // ======================== 温度读取 ========================
@@ -465,14 +533,29 @@ static int apply_level(int level) {
     return 1;
 }
 
-// ======================== App 进程检测 ========================
+// ======================== App 进程 + 心跳检测 ========================
 
 /**
- * 通过 pgrep 检测飞智 App 进程是否存活
- * 返回 1=存活，0=已死
+ * 双重检测 App 是否存活：
+ *   1. pgrep 进程存在
+ *   2. 状态文件 mtime 不超过 STATUS_TIMEOUT 秒（模块心跳）
+ * 两者都确认才算存活，任一有问题即判死。
  */
 static int is_app_alive(void) {
-    return system("pgrep -f 'com.flydigi.waspwing.experimental' >/dev/null 2>&1") == 0;
+    // 1. pgrep 进程检测
+    int pgrep_ok = system("pgrep -f 'com.flydigi.waspwing.experimental' >/dev/null 2>&1") == 0;
+
+    // 2. 状态文件 mtime 心跳检测（模块每 5 秒写入一次）
+    int status_ok = 0;
+    struct stat st;
+    if (stat(status_file_path, &st) == 0) {
+        time_t now = time(NULL);
+        if (now - st.st_mtime <= STATUS_TIMEOUT) {
+            status_ok = 1;
+        }
+    }
+
+    return pgrep_ok && status_ok;
 }
 
 // ======================== 状态重置 ========================
@@ -506,6 +589,7 @@ static void reset_state(void) {
 
     app_dead_since = 0;
     app_was_alive = 1;                 // 重置后视为 App 存活，等待检测
+    app_ble_connected = 0;             // 重置 BLE 连接状态
 
     // 清发送缓存，确保重置参数一定下发
     last_sent_valid = 0;
@@ -535,7 +619,6 @@ static void battery_control(void) {
 
     int batt = read_battery_temp();
     if (batt < 0) {
-        // 读不到温度传感器，保持当前档位不变
         return;
     }
 
@@ -544,8 +627,31 @@ static void battery_control(void) {
         return;
     }
 
-    // 冷却期内不执行升降档
-    if (cooldown_counter > 0) return;
+    // ---- 峰值过冲抑制：基准 2°C 内单次变动超过 0.3°C → 反向补偿一档 ----
+    // 此逻辑独立于冷却期，作为安全机制始终执行
+    // 急升 → 加压档（+1），急降 → 减压档（-1），抑制温度过冲/过冷
+    if (last_batt_reading >= 0) {
+        int abs_diff = (batt > BATT_BASELINE) ? (batt - BATT_BASELINE) : (BATT_BASELINE - batt);
+        int batt_change = batt - last_batt_reading;
+        int abs_change = (batt_change > 0) ? batt_change : -batt_change;
+
+        if (abs_diff <= BATT_ZONE_2 && abs_change > 3) {
+            int adjust = (batt_change > 0) ? 1 : -1;
+            int old = battery_fan_level;
+            battery_fan_level += adjust;
+            battery_fan_level = clamp(battery_fan_level, LEVEL_MIN, LEVEL_MAX);
+            cooldown_counter = COOLDOWN_CYCLES;
+            write_log("BATT peak-damp %+d (chg=%d/5s) lv %d→%d",
+                      adjust, batt_change, old, battery_fan_level);
+        }
+    }
+
+    // 冷却期内不执行常规升降档（但峰值抑制已独立触发）
+    if (cooldown_counter > 0) {
+        last_batt_reading = batt;
+        prev_batt_temp = batt;
+        return;
+    }
 
     // 根据与基准温度的偏差计算档位调整量
     int diff = batt - BATT_BASELINE;
@@ -564,12 +670,33 @@ static void battery_control(void) {
 
     if (delta != 0) {
         int old = battery_fan_level;
+        int abs_diff = (diff > 0) ? diff : -diff;
 
-        // ----- 温度变化趋势检测 -----
-        // 如果温度变化方向与升降档方向相反，最多豁免 6 次
+        // ----- 温度变化趋势检测（融合峰值时间检测）-----
+        // 基准 2°C 内：趋势反向即豁免（原有逻辑）
+        // 超过 2°C：仅当单次变动 >0.5°C 才豁免（严格模式，防止远偏离时不响应）
         if (last_batt_reading >= 0) {
-            if ((delta > 0 && batt < last_batt_reading) ||
-                (delta < 0 && batt > last_batt_reading)) {
+            int batt_change = batt - last_batt_reading;
+            int should_exempt = 0;
+
+            if (abs_diff <= BATT_ZONE_2) {
+                // 基准 2°C 以内：趋势反向即豁免
+                if ((delta > 0 && batt < last_batt_reading) ||
+                    (delta < 0 && batt > last_batt_reading)) {
+                    should_exempt = 1;
+                }
+            } else {
+                // 超过 2°C：仅单次变动超过 0.5°C（5 单位）才豁免
+                int abs_change = (batt_change > 0) ? batt_change : -batt_change;
+                if (abs_change > 5 &&
+                    ((delta > 0 && batt < last_batt_reading) ||
+                     (delta < 0 && batt > last_batt_reading))) {
+                    should_exempt = 1;
+                }
+            }
+
+            // 应用豁免（最多 6 次连续豁免）
+            if (should_exempt) {
                 if (trend_override < 6) {
                     trend_override++;
                     delta = 0;
@@ -582,7 +709,6 @@ static void battery_control(void) {
                 trend_override = 0;
             }
         }
-        last_batt_reading = batt;
 
         if (delta != 0) {
             prev_batt_temp = batt;
@@ -599,6 +725,9 @@ static void battery_control(void) {
         // 死区内或恰好等于基准 → 记录温度但不下调
         prev_batt_temp = batt;
     }
+
+    // 更新本轮读数为下次趋势检测 + 峰值抑制的对比基准
+    last_batt_reading = batt;
 }
 
 // ======================== CPU 紧急干预 ========================
@@ -731,14 +860,25 @@ static void main_loop(void) {
     // 这样电池控制始终以上次实际使用的档位为基础进行升降
     battery_fan_level = final_level;
 
-    // 6. 退出紧急时限制电池档位上限（在同步之后，保证一定会执行）
-    // 防止紧急撤了之后档位过高导致过度散热
-    if (prev_emerg_level >= 3 && emergency_level < 3 && battery_fan_level > EMERG_FORCED_3)
-        battery_fan_level = EMERG_FORCED_3;
-    if (prev_emerg_level >= 2 && emergency_level < 2 && battery_fan_level > EMERG_FORCED_2)
-        battery_fan_level = EMERG_FORCED_2;
-    if (prev_emerg_level >= 1 && emergency_level < 1 && battery_fan_level > EMERG_FORCED_1)
-        battery_fan_level = EMERG_FORCED_1;
+    // 6. 退出紧急时限制电池档位上限（在同步之后执行）
+    // 仅在电池温度低于升档阈值（基准温度+死区）时允许降档，
+    // 防止 CPU 温度刚降下来又反弹回去
+    {
+        int batt = read_battery_temp();
+        int upshift_threshold = BATT_BASELINE + BATT_ZONE_1;
+        if (batt < 0 || batt <= upshift_threshold) {
+            if (prev_emerg_level >= 3 && emergency_level < 3 && battery_fan_level > EMERG_FORCED_3)
+                battery_fan_level = EMERG_FORCED_3;
+            if (prev_emerg_level >= 2 && emergency_level < 2 && battery_fan_level > EMERG_FORCED_2)
+                battery_fan_level = EMERG_FORCED_2;
+            if (prev_emerg_level >= 1 && emergency_level < 1 && battery_fan_level > EMERG_FORCED_1)
+                battery_fan_level = EMERG_FORCED_1;
+        } else {
+            write_log("EMERG skip cap: batt=%d.%d > upshift=%d.%d",
+                      batt / 10, batt % 10,
+                      upshift_threshold / 10, upshift_threshold % 10);
+        }
+    }
 }
 
 // ======================== 程序入口 ========================
@@ -762,6 +902,10 @@ int main(int argc, char *argv[]) {
         struct stat st;
         if (stat(config_path, &st) == 0) config_mtime = st.st_mtime;
     }
+
+    // --- 状态文件初始化（模块心跳 + BLE 状态） ---
+    set_default_status_path();
+    create_status_file();
 
     // --- 初始化档位 ---
     init_fan_level();
@@ -794,7 +938,10 @@ int main(int argc, char *argv[]) {
     while (running) {
         main_loop();
 
-        // App 进程存活检测
+        // 读取模块上报的 BLE 连接状态（从 status 文件）
+        read_status_ble();
+
+        // App 进程存活检测（pgrep + 状态文件 mtime）
         if (!is_app_alive()) {
             // App 刚死 → 记录失联时间
             if (app_was_alive) {
