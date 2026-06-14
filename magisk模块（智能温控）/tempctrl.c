@@ -881,10 +881,9 @@ static void emergency_intervention(void) {
     // 等级变化处理
     if (new_level != emergency_level) {
         int old = emergency_level;
-        write_log("紧急 %d→%d cpu=%d.%d(加权%d.%d)",
-                  old, new_level,
-                  cpu_now / 10, cpu_now % 10,
-                  t / 10, t % 10);
+        write_log("紧急 %d 档+%d cpu=%d.%d",
+                  old, new_level - old,
+                  cpu_now / 10, cpu_now % 10);
 
         emergency_level = new_level;
     }
