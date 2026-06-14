@@ -119,7 +119,7 @@ static int OVERRIDE_MAX = 6;
 
 // --- 峰值过冲抑制阈值（0.1°C，可配置）---
 // 基准 2°C 内单次变动超过此值 → 反向补偿一档
-static int PEAK_DAMP_THRESHOLD = 3;
+static int PEAK_DAMP_THRESHOLD = 4;
 
 // --- 初始档位计算参数（可配置）---
 // 启动时根据 (当前温度 - INIT_TEMP_OFFSET) / INIT_DIVISOR 计算初始档位
@@ -745,9 +745,9 @@ static void battery_control(void) {
                     should_exempt = 1;
                 }
             } else {
-                // 超过 2°C：仅单次变动超过 0.5°C（5 单位）才豁免
+                // 超过 2°C：仅单次变动超过 PEAK_DAMP_THRESHOLD 才豁免
                 int abs_change = (batt_change > 0) ? batt_change : -batt_change;
-                if (abs_change > 5 &&
+                if (abs_change > PEAK_DAMP_THRESHOLD &&
                     ((delta > 0 && batt < last_batt_reading) ||
                      (delta < 0 && batt > last_batt_reading))) {
                     should_exempt = 1;
