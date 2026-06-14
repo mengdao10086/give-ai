@@ -502,25 +502,27 @@ public class MainHook implements IXposedHookLoadPackage {
                         }
                     });
 
-            XposedBridge.log(TAG + " 已钩住 B6ExperimentalActivity.onResume → FIFO");
+            XposedBridge.log(TAG + " 已钩住 B6ExperimentalActivity.onResume");
 
-            // ===== 捕获 WaspWingManager 实例（用于 setRunMode） =====
-            try {
-                Class<?> mgrCls = lpparam.classLoader.loadClass(
-                        "com.flydigi.sdk.waspwing.WaspWingManager");
-                XposedBridge.hookAllConstructors(mgrCls, new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(MethodHookParam param) {
-                        capturedWaspWingMgr = param.thisObject;
-                        XposedBridge.log(TAG + " 已捕获 WaspWingManager 实例");
-                    }
-                });
-                XposedBridge.log(TAG + " 已钩住 WaspWingManager 构造函数");
-            } catch (Throwable t) {
-                XposedBridge.log(TAG + " 钩 WaspWingManager 失败: " + t.getMessage());
-            }
         } catch (Throwable t) {
             XposedBridge.log(TAG + " 钩 B6ExperimentalActivity 失败: " + t.getMessage());
+        }
+
+        // ========== 捕获 WaspWingManager 实例（用于 setRunMode） ==========
+        // 独立于 B6ExperimentalActivity，防止该类找不到导致实例捕获失败
+        try {
+            Class<?> mgrCls = lpparam.classLoader.loadClass(
+                    "com.flydigi.sdk.waspwing.WaspWingManager");
+            XposedBridge.hookAllConstructors(mgrCls, new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    capturedWaspWingMgr = param.thisObject;
+                    XposedBridge.log(TAG + " 已捕获 WaspWingManager 实例");
+                }
+            });
+            XposedBridge.log(TAG + " 已钩住 WaspWingManager 构造函数");
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + " 钩 WaspWingManager 失败: " + t.getMessage());
         }
 
         // ========== 广播接收器注册（Application.onCreate 时机） ==========

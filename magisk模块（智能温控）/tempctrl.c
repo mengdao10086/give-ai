@@ -922,17 +922,29 @@ static void main_loop(void) {
     // 6. 退出紧急时限制电池档位上限（在同步之后执行）
     // 仅在电池温度低于升档阈值（基准温度+死区）时允许降档，
     // 防止 CPU 温度刚降下来又反弹回去
+    // 大电流充电（current < -2000mA）时跳过限制——此时电池升温来自充电而非 CPU
     {
         int batt = read_battery_temp();
         int upshift_threshold = BATT_BASELINE + BATT_ZONE_1;
-        if (batt < 0 || batt <= upshift_threshold) {
+        int charging_hard = 0;
+        FILE *cf = fopen("/sys/class/power_supply/battery/current_now", "r");
+        if (cf) {
+            int cur;
+            if (fscanf(cf, "%d", &cur) == 1 && cur < -2000000)
+                charging_hard = 1;
+            fclose(cf);
+        }
+        if (batt >= 0 && charging_hard) {
+            ;  // 大电流充电中→不降档
+        } else if (batt < 0 || batt <= upshift_threshold) {
             if (prev_emerg_level >= 3 && emergency_level < 3 && battery_fan_level > EMERG_FORCED_3)
                 battery_fan_level = EMERG_FORCED_3;
             if (prev_emerg_level >= 2 && emergency_level < 2 && battery_fan_level > EMERG_FORCED_2)
                 battery_fan_level = EMERG_FORCED_2;
             if (prev_emerg_level >= 1 && emergency_level < 1 && battery_fan_level > EMERG_FORCED_1)
                 battery_fan_level = EMERG_FORCED_1;
-        } else {
+        } else if (prev_emerg_level != emergency_level) {
+            // 只在紧急等级刚切换时打一次，避免每 5 秒刷屏
             write_log("EMERG skip cap: batt=%d.%d > upshift=%d.%d",
                       batt / 10, batt % 10,
                       upshift_threshold / 10, upshift_threshold % 10);
@@ -989,7 +1001,10 @@ int main(int argc, char *argv[]) {
                 break;
             }
         }
-        write_log("WAIT module not ready, retry in 5s...");
+        // 降低日志频率：每 30 秒（6 轮）打一次
+        static int wait_noise = 0;
+        if (++wait_noise % 6 == 1)
+            write_log("WAIT module not ready, retry in 5s...");
         sleep(5);
     }
     if (!running) goto exit;
