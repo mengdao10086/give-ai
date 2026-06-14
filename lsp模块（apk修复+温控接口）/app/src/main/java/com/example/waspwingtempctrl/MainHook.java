@@ -9,7 +9,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 
 import java.io.FileOutputStream;
-import java.util.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Iterator;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
