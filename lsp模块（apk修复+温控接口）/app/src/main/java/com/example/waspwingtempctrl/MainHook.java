@@ -414,7 +414,9 @@ public class MainHook implements IXposedHookLoadPackage {
         // 修复：用带 sleep(100ms) 的包装队列替换原 ConcurrentLinkedQueue。
         // 注意：钩子挂在具体子类 WaspWingDataInteractionController 上，而非抽象父类。
         try {
-            XposedHelpers.findAndHookMethod(wingCtrl, "<init>",
+            Class<?> wingCtrl2 = lpparam.classLoader.loadClass(
+                    "com.flydigi.sdk.waspwing.WaspWingDataInteractionController");
+            XposedHelpers.findAndHookMethod(wingCtrl2, "<init>",
                     Context.class,
                     lpparam.classLoader.loadClass("com.flydigi.sdk.bluetooth.DeviceFilter"),
                     new XC_MethodHook() {

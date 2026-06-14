@@ -25,8 +25,6 @@ done
 cp "$MODDIR/tempctrl" /data/local/tmp/tempctrl
 chmod 755 /data/local/tmp/tempctrl
 
-# 复制配置文件到同目录（/proc/self/exe 自动定位）
-cp "$MODDIR/profile.conf" /data/local/tmp/profile.conf 2>/dev/null
-
-# 启动智能温控守护程序
-nohup /data/local/tmp/tempctrl >> /cache/tempctrl.log 2>&1 &
+# 启动智能温控守护程序（直接从模块目录读取配置）
+nohup /data/local/tmp/tempctrl --config "$MODDIR/profile.conf" \
+    >> /cache/tempctrl.log 2>&1 &
